@@ -19,30 +19,14 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Toast
-import org.json.JSONArray
-import org.json.JSONObject
 import kotlin.math.roundToInt
 import kotlin.random.Random
 
 class FloatingOverlayService : Service() {
     companion object {
-        private const val CONTROL_X_KEY = "controlX"
-        private const val CONTROL_Y_KEY = "controlY"
-        private const val TARGET_X_KEY = "targetX"
-        private const val TARGET_Y_KEY = "targetY"
-        private const val CLICKS_PER_SECOND_KEY = "clicksPerSecond"
-        private const val JITTER_RADIUS_KEY = "jitterRadius"
-        private const val TARGET_SIZE_KEY = "targetSize"
-        private const val CONFIGURATION_LIST_KEY = "configurationList"
         const val ACTION_SAVE_CONFIGURATION = "com.example.autoclicker.SAVE_CONFIGURATION"
         const val ACTION_CONFIGURATION_LIST_CHANGED =
             "com.example.autoclicker.CONFIGURATION_LIST_CHANGED"
-        const val PREFERENCES_NAME = "floating_overlay"
-        const val DEFAULT_CLICKS_PER_SECOND = 8.0
-        const val DEFAULT_JITTER_RADIUS = 6.0
-        const val DEFAULT_TARGET_SIZE = 32.0
-        const val DEFAULT_TARGET_X = 180
-        const val DEFAULT_TARGET_Y = 300
     }
 
     private lateinit var windowManager: WindowManager
@@ -53,11 +37,7 @@ class FloatingOverlayService : Service() {
     private var targetParams: WindowManager.LayoutParams? = null
     private var clickRunnable: Runnable? = null
     private var running = false
-    private var clicksPerSecond = DEFAULT_CLICKS_PER_SECOND
-    private var jitterRadius = DEFAULT_JITTER_RADIUS
-    private var targetSize = DEFAULT_TARGET_SIZE
-    private var targetX = DEFAULT_TARGET_X
-    private var targetY = DEFAULT_TARGET_Y
+    private var overlayConfig = OverlayConfig()
     private var targetOnly = false
 
     override fun onCreate() {
@@ -67,34 +47,12 @@ class FloatingOverlayService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val preferences = preferences()
-        clicksPerSecond = intent?.getDoubleExtra(
-            "clicksPerSecond",
-            preferences.getFloat(CLICKS_PER_SECOND_KEY, DEFAULT_CLICKS_PER_SECOND.toFloat())
-                .toDouble()
-        ) ?: preferences.getFloat(CLICKS_PER_SECOND_KEY, DEFAULT_CLICKS_PER_SECOND.toFloat())
-            .toDouble()
-        jitterRadius = intent?.getDoubleExtra(
-            "jitterRadius",
-            preferences.getFloat(JITTER_RADIUS_KEY, DEFAULT_JITTER_RADIUS.toFloat()).toDouble()
-        ) ?: preferences.getFloat(JITTER_RADIUS_KEY, DEFAULT_JITTER_RADIUS.toFloat()).toDouble()
-        targetSize = intent?.getDoubleExtra(
-            "targetSize",
-            preferences.getFloat(TARGET_SIZE_KEY, DEFAULT_TARGET_SIZE.toFloat()).toDouble()
-        ) ?: preferences.getFloat(TARGET_SIZE_KEY, DEFAULT_TARGET_SIZE.toFloat()).toDouble()
-        targetX = intent?.getDoubleExtra(
-            "targetX",
-            preferences.getInt(TARGET_X_KEY, DEFAULT_TARGET_X).toDouble()
-        )?.roundToInt() ?: preferences.getInt(TARGET_X_KEY, DEFAULT_TARGET_X)
-        targetY = intent?.getDoubleExtra(
-            "targetY",
-            preferences.getInt(TARGET_Y_KEY, DEFAULT_TARGET_Y).toDouble()
-        )?.roundToInt() ?: preferences.getInt(TARGET_Y_KEY, DEFAULT_TARGET_Y)
+        overlayConfig = OverlayConfig.fromIntent(intent, preferences)
         targetOnly = intent?.getBooleanExtra("targetOnly", false) ?: false
 
         if (intent?.action == ACTION_SAVE_CONFIGURATION) {
             if (targetView != null) {
-                updateTargetSize()
-                updateTargetPosition()
+                updateTargetLayout()
                 restartClickLoopIfRunning()
             }
             saveConfiguration()
@@ -104,8 +62,7 @@ class FloatingOverlayService : Service() {
         if (targetView == null) {
             showOverlay()
         } else {
-            updateTargetSize()
-            updateTargetPosition()
+            updateTargetLayout()
             updateControlVisibility()
             restartClickLoopIfRunning()
         }
@@ -123,18 +80,7 @@ class FloatingOverlayService : Service() {
 
     private fun showOverlay() {
         val preferences = preferences()
-
-        targetParams = WindowManager.LayoutParams(
-            targetSize.roundToInt(),
-            targetSize.roundToInt(),
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            baseWindowFlags(),
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = targetX
-            y = targetY
-        }
+        targetParams = createTargetLayoutParams()
         targetView = TargetReticleView(this).also { view ->
             attachDragHandler(view, view, targetParams!!)
             windowManager.addView(view, targetParams)
@@ -142,17 +88,7 @@ class FloatingOverlayService : Service() {
 
         if (targetOnly) return
 
-        controlParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            baseWindowFlags(),
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = preferences.getInt(CONTROL_X_KEY, dp(8))
-            y = preferences.getInt(CONTROL_Y_KEY, dp(120))
-        }
+        controlParams = createControlLayoutParams(preferences)
         controlView = createControlView().also { view ->
             windowManager.addView(view, controlParams)
         }
@@ -192,7 +128,6 @@ class FloatingOverlayService : Service() {
             "保存"
         )
         saveButton.setOnClickListener {
-            savePositions()
             addConfiguration()
             Toast.makeText(this, "已保存为新配置", Toast.LENGTH_SHORT).show()
         }
@@ -222,18 +157,7 @@ class FloatingOverlayService : Service() {
 
         if (controlView != null) return
 
-        val preferences = preferences()
-        controlParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            baseWindowFlags(),
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = preferences.getInt(CONTROL_X_KEY, dp(8))
-            y = preferences.getInt(CONTROL_Y_KEY, dp(120))
-        }
+        controlParams = createControlLayoutParams(preferences())
         controlView = createControlView().also { view ->
             windowManager.addView(view, controlParams)
         }
@@ -317,8 +241,10 @@ class FloatingOverlayService : Service() {
                         params.y = initialY + (event.rawY - initialTouchY).roundToInt()
                         windowManager.updateViewLayout(windowView, params)
                         if (windowView == targetView) {
-                            targetX = params.x
-                            targetY = params.y
+                            overlayConfig = overlayConfig.copy(
+                                targetX = params.x,
+                                targetY = params.y,
+                            )
                             saveTargetPosition()
                         }
                         return true
@@ -342,7 +268,7 @@ class FloatingOverlayService : Service() {
         }
 
         running = true
-        val intervalMs = (1000.0 / clicksPerSecond.coerceIn(1.0, 20.0))
+        val intervalMs = (1000.0 / overlayConfig.clicksPerSecond.coerceIn(1.0, 20.0))
             .roundToInt()
             .coerceAtLeast(50)
 
@@ -354,7 +280,7 @@ class FloatingOverlayService : Service() {
                     return
                 }
 
-                val jitter = jitterRadius.coerceAtLeast(0.0)
+                val jitter = overlayConfig.jitterRadius.coerceAtLeast(0.0)
                 val x = currentTarget.x + currentTargetView.width / 2f +
                     Random.nextDouble(-jitter, jitter).toFloat()
                 val y = currentTarget.y + currentTargetView.height / 2f +
@@ -384,20 +310,14 @@ class FloatingOverlayService : Service() {
         startClickLoop()
     }
 
-    private fun updateTargetSize() {
+    private fun updateTargetLayout() {
         val target = targetParams ?: return
         val targetWindow = targetView ?: return
-        val size = targetSize.roundToInt()
+        val size = overlayConfig.targetSize.roundToInt()
         target.width = size
         target.height = size
-        windowManager.updateViewLayout(targetWindow, target)
-    }
-
-    private fun updateTargetPosition() {
-        val target = targetParams ?: return
-        val targetWindow = targetView ?: return
-        target.x = targetX
-        target.y = targetY
+        target.x = overlayConfig.targetX
+        target.y = overlayConfig.targetY
         windowManager.updateViewLayout(targetWindow, target)
     }
 
@@ -417,75 +337,35 @@ class FloatingOverlayService : Service() {
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
     }
 
-    private fun savePositions() {
-        val control = controlParams ?: return
-        val target = targetParams ?: return
-
-        preferences()
-            .edit()
-            .putInt(CONTROL_X_KEY, control.x)
-            .putInt(CONTROL_Y_KEY, control.y)
-            .putInt(TARGET_X_KEY, target.x)
-            .putInt(TARGET_Y_KEY, target.y)
-            .putFloat(CLICKS_PER_SECOND_KEY, clicksPerSecond.toFloat())
-            .putFloat(JITTER_RADIUS_KEY, jitterRadius.toFloat())
-            .putFloat(TARGET_SIZE_KEY, targetSize.toFloat())
-            .apply()
-    }
-
     private fun saveTargetPosition() {
         val target = targetParams ?: return
-
-        preferences()
-            .edit()
-            .putInt(TARGET_X_KEY, target.x)
-            .putInt(TARGET_Y_KEY, target.y)
-            .apply()
+        overlayConfig = overlayConfig.copy(targetX = target.x, targetY = target.y)
+        overlayConfig.saveToPreferences(preferences(), controlPosition())
     }
 
     private fun addConfiguration() {
         val preferences = preferences()
-        val saved = preferences.getString(CONFIGURATION_LIST_KEY, null)
-        val configurations = if (saved.isNullOrBlank()) JSONArray() else JSONArray(saved)
-        val nextIndex = configurations.length() + 1
-
-        configurations.put(
-            JSONObject().apply {
-                put("id", System.nanoTime().toString())
-                put("name", "配置 $nextIndex")
-                put("clicksPerSecond", clicksPerSecond)
-                put("jitterRadius", jitterRadius)
-                put("targetSize", targetSize)
-                put("targetX", targetParams?.x ?: targetX)
-                put("targetY", targetParams?.y ?: targetY)
-            }
+        val savedConfigurations = OverlayConfig.listFromPreferences(
+            preferences,
+            CONFIGURATION_LIST_KEY,
+        )
+        val currentConfig = currentOverlayConfig()
+        val nextConfiguration = currentConfig.toJson(
+            id = System.nanoTime().toString(),
+            name = "配置 ${savedConfigurations.size + 1}",
         )
 
-        preferences
-            .edit()
-            .putString(CONFIGURATION_LIST_KEY, configurations.toString())
-            .apply()
+        OverlayConfig.saveListToPreferences(
+            preferences,
+            CONFIGURATION_LIST_KEY,
+            savedConfigurations + nextConfiguration,
+        )
         sendBroadcast(Intent(ACTION_CONFIGURATION_LIST_CHANGED).setPackage(packageName))
     }
 
     private fun saveConfiguration() {
-        val editor = preferences()
-            .edit()
-            .putFloat(CLICKS_PER_SECOND_KEY, clicksPerSecond.toFloat())
-            .putFloat(JITTER_RADIUS_KEY, jitterRadius.toFloat())
-            .putFloat(TARGET_SIZE_KEY, targetSize.toFloat())
-
-        controlParams?.let { control ->
-            editor.putInt(CONTROL_X_KEY, control.x)
-            editor.putInt(CONTROL_Y_KEY, control.y)
-        }
-        targetParams?.let { target ->
-            editor.putInt(TARGET_X_KEY, target.x)
-            editor.putInt(TARGET_Y_KEY, target.y)
-        }
-
-        editor
-            .apply()
+        overlayConfig = currentOverlayConfig()
+        overlayConfig.saveToPreferences(preferences(), controlPosition())
         Toast.makeText(this, "已保存当前参数", Toast.LENGTH_SHORT).show()
     }
 
@@ -510,7 +390,51 @@ class FloatingOverlayService : Service() {
         return (value * resources.displayMetrics.density).roundToInt()
     }
 
-    private fun preferences() = getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+    private fun createTargetLayoutParams(): WindowManager.LayoutParams {
+        val size = overlayConfig.targetSize.roundToInt()
+        return WindowManager.LayoutParams(
+            size,
+            size,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            baseWindowFlags(),
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = overlayConfig.targetX
+            y = overlayConfig.targetY
+        }
+    }
+
+    private fun createControlLayoutParams(
+        preferences: android.content.SharedPreferences,
+    ): WindowManager.LayoutParams {
+        val position = preferences.readPosition(dp(8), dp(120))
+        return WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            baseWindowFlags(),
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = position.x
+            y = position.y
+        }
+    }
+
+    private fun currentOverlayConfig(): OverlayConfig {
+        val target = targetParams
+        return overlayConfig.copy(
+            targetX = target?.x ?: overlayConfig.targetX,
+            targetY = target?.y ?: overlayConfig.targetY,
+        )
+    }
+
+    private fun controlPosition(): OverlayPosition? {
+        return controlParams?.let { OverlayPosition(it.x, it.y) }
+    }
+
+    private fun preferences() = getSharedPreferences(OVERLAY_PREFERENCES_NAME, Context.MODE_PRIVATE)
 }
 
 private class TargetReticleView(context: Context) : View(context) {

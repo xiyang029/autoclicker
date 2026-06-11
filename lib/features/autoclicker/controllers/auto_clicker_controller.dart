@@ -1,34 +1,22 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:ota_update/ota_update.dart';
 
-import '../../../core/services/app_update_service.dart';
-import '../../../platform/android_autoclicker_channel.dart';
 import '../models/click_configuration.dart';
-
-class UpdatePrompt {
-  const UpdatePrompt({required this.currentVersion, required this.release});
-
-  final String currentVersion;
-  final AppReleaseInfo release;
-}
+import '../../../platform/android_autoclicker_channel.dart';
 
 class AutoClickerController extends ChangeNotifier with WidgetsBindingObserver {
-  AutoClickerController({AppUpdateService? updateService})
-    : _updateService = updateService ?? AppUpdateService();
+  AutoClickerController();
 
-  final AppUpdateService _updateService;
   bool _disposed = false;
 
   bool overlayServiceRunning = false;
   bool overlayPermissionGranted = false;
   bool accessibilityPermissionGranted = false;
-  bool checkingForUpdate = false;
-  bool downloadingUpdate = false;
-  int? downloadProgress;
+
+  // 只保留一个核心数据：供 UI 渲染展示的当前版本号
   String currentVersion = '';
-  String? updateStatusText;
+
   double clicksPerSecond = AndroidOverlayDefaults.clicksPerSecond;
   double jitterRadius = AndroidOverlayDefaults.jitterRadius;
   double targetSize = AndroidOverlayDefaults.targetSize;
@@ -38,6 +26,26 @@ class AutoClickerController extends ChangeNotifier with WidgetsBindingObserver {
 
   bool get canStartOverlay =>
       overlayPermissionGranted && accessibilityPermissionGranted;
+
+  bool isActiveConfiguration(ClickConfiguration configuration) {
+    return configuration.matches(
+      clicksPerSecond: clicksPerSecond,
+      jitterRadius: jitterRadius,
+      targetSize: targetSize,
+      targetX: targetX,
+      targetY: targetY,
+    );
+  }
+
+  ClickConfiguration get currentConfiguration => ClickConfiguration(
+    id: '',
+    name: '',
+    clicksPerSecond: clicksPerSecond,
+    jitterRadius: jitterRadius,
+    targetSize: targetSize,
+    targetX: targetX,
+    targetY: targetY,
+  );
 
   void init() {
     WidgetsBinding.instance.addObserver(this);
@@ -99,12 +107,7 @@ class AutoClickerController extends ChangeNotifier with WidgetsBindingObserver {
         await AndroidAutoClickerChannel.loadOverlayConfiguration();
 
     if (_disposed) return;
-    clicksPerSecond = configuration['clicksPerSecond']!;
-    jitterRadius = configuration['jitterRadius']!;
-    targetSize = configuration['targetSize']!;
-    targetX = configuration['targetX']!;
-    targetY = configuration['targetY']!;
-    notifyListeners();
+    _updateFromConfiguration(ClickConfiguration.fromChannelMap(configuration));
   }
 
   Future<void> loadConfigurationList() async {
@@ -120,18 +123,15 @@ class AutoClickerController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void setClicksPerSecond(double value) {
-    clicksPerSecond = value;
-    notifyListeners();
+    _updateOverlayValues(clicksPerSecond: value);
   }
 
   void setJitterRadius(double value) {
-    jitterRadius = value;
-    notifyListeners();
+    _updateOverlayValues(jitterRadius: value);
   }
 
   void setTargetSize(double value) {
-    targetSize = value;
-    notifyListeners();
+    _updateOverlayValues(targetSize: value);
   }
 
   Future<void> saveOverlayConfiguration() async {
@@ -152,24 +152,14 @@ class AutoClickerController extends ChangeNotifier with WidgetsBindingObserver {
     final trimmedName = name.trim();
     if (trimmedName.isEmpty || trimmedName == configuration.name) return;
 
-    configurations = [
-      for (final item in configurations)
-        if (item.id == configuration.id)
-          item.copyWith(name: trimmedName)
-        else
-          item,
-    ];
-    notifyListeners();
-    await _saveConfigurationList();
+    await _replaceConfiguration(
+      configuration.id,
+      (item) => item.copyWith(name: trimmedName),
+    );
   }
 
   Future<void> applyConfiguration(ClickConfiguration configuration) async {
-    clicksPerSecond = configuration.clicksPerSecond;
-    jitterRadius = configuration.jitterRadius;
-    targetSize = configuration.targetSize;
-    targetX = configuration.targetX;
-    targetY = configuration.targetY;
-    notifyListeners();
+    _updateFromConfiguration(configuration);
     await saveOverlayConfiguration();
   }
 
@@ -184,25 +174,20 @@ class AutoClickerController extends ChangeNotifier with WidgetsBindingObserver {
       name: trimmedName,
     );
 
-    configurations = [
-      for (final item in configurations)
-        if (item.id == configuration.id) normalizedConfiguration else item,
-    ];
-    if (configuration.matches(
+    final shouldSyncCurrentValues = configuration.matches(
       clicksPerSecond: clicksPerSecond,
       jitterRadius: jitterRadius,
       targetSize: targetSize,
       targetX: targetX,
       targetY: targetY,
-    )) {
-      clicksPerSecond = normalizedConfiguration.clicksPerSecond;
-      jitterRadius = normalizedConfiguration.jitterRadius;
-      targetSize = normalizedConfiguration.targetSize;
-      targetX = normalizedConfiguration.targetX;
-      targetY = normalizedConfiguration.targetY;
-    }
-    notifyListeners();
-    await _saveConfigurationList();
+    );
+    await _replaceConfiguration(
+      configuration.id,
+      (_) => normalizedConfiguration,
+      syncCurrentValues: shouldSyncCurrentValues
+          ? normalizedConfiguration
+          : null,
+    );
   }
 
   Future<void> deleteConfiguration(ClickConfiguration configuration) async {
@@ -251,142 +236,56 @@ class AutoClickerController extends ChangeNotifier with WidgetsBindingObserver {
     );
   }
 
-  Future<void> checkForUpdates({
-    required Future<bool> Function(UpdatePrompt prompt) confirmDownload,
-    required void Function(String message) showMessage,
-  }) async {
-    if (checkingForUpdate || downloadingUpdate) return;
-
-    checkingForUpdate = true;
-    updateStatusText = '正在检查更新...';
-    notifyListeners();
-
-    try {
-      final release = await _updateService.fetchLatestRelease();
-      final resolvedCurrentVersion = currentVersion.isEmpty
-          ? await AndroidAutoClickerChannel.getAppVersionName()
-          : currentVersion;
-      final hasUpdate =
-          resolvedCurrentVersion.isEmpty ||
-          _updateService.isNewerVersion(
-            release.version,
-            resolvedCurrentVersion,
-          );
-
-      if (_disposed) return;
-      if (!hasUpdate) {
-        updateStatusText = '当前已是最新版本';
-        notifyListeners();
-        showMessage('当前已是最新版本');
-        return;
-      }
-
-      final shouldDownload = await confirmDownload(
-        UpdatePrompt(currentVersion: resolvedCurrentVersion, release: release),
-      );
-
-      if (shouldDownload) {
-        await downloadAndInstallRelease(release, showMessage: showMessage);
-      } else if (!_disposed) {
-        updateStatusText = '发现新版本 ${release.version}';
-        notifyListeners();
-      }
-    } catch (error) {
-      if (!_disposed) {
-        updateStatusText = '检查更新失败';
-        notifyListeners();
-        showMessage('检查更新失败：$error');
-      }
-    } finally {
-      if (!_disposed) {
-        checkingForUpdate = false;
-        notifyListeners();
-      }
-    }
-  }
-
-  Future<void> downloadAndInstallRelease(
-    AppReleaseInfo release, {
-    required void Function(String message) showMessage,
-  }) async {
-    downloadingUpdate = true;
-    downloadProgress = null;
-    updateStatusText = '准备下载 ${release.version}';
-    notifyListeners();
-
-    try {
-      await for (final event in OtaUpdate().execute(
-        release.apkUrl,
-        destinationFilename: release.fileName,
-      )) {
-        if (_disposed) return;
-        _handleOtaEvent(event, release, showMessage);
-        if (event.status == OtaStatus.INSTALLING) {
-          break;
-        }
-      }
-    } catch (error) {
-      if (!_disposed) {
-        updateStatusText = '下载更新失败';
-        notifyListeners();
-        showMessage('下载更新失败：$error');
-      }
-    } finally {
-      if (!_disposed) {
-        downloadingUpdate = false;
-        downloadProgress = null;
-        notifyListeners();
-      }
-    }
-  }
-
-  void _handleOtaEvent(
-    OtaEvent event,
-    AppReleaseInfo release,
-    void Function(String message) showMessage,
-  ) {
-    switch (event.status) {
-      case OtaStatus.DOWNLOADING:
-        final progress = int.tryParse(event.value ?? '');
-        downloadProgress = progress?.clamp(0, 100);
-        updateStatusText = downloadProgress == null
-            ? '正在下载 ${release.version}'
-            : '正在下载 ${release.version}，$downloadProgress%';
-        notifyListeners();
-      case OtaStatus.INSTALLING:
-        downloadProgress = 100;
-        updateStatusText = '下载完成，正在打开系统安装器';
-        notifyListeners();
-      case OtaStatus.INSTALLATION_DONE:
-        downloadProgress = 100;
-        updateStatusText = '安装已完成';
-        notifyListeners();
-      case OtaStatus.PERMISSION_NOT_GRANTED_ERROR:
-        updateStatusText = '请允许安装未知来源应用后重新更新';
-        downloadingUpdate = false;
-        notifyListeners();
-        showMessage('请在系统设置中允许安装未知来源应用');
-      case OtaStatus.DOWNLOAD_ERROR:
-      case OtaStatus.INTERNAL_ERROR:
-      case OtaStatus.ALREADY_RUNNING_ERROR:
-      case OtaStatus.CHECKSUM_ERROR:
-      case OtaStatus.INSTALLATION_ERROR:
-        updateStatusText = '下载更新失败';
-        downloadingUpdate = false;
-        notifyListeners();
-        showMessage(event.value?.isNotEmpty == true ? event.value! : '下载更新失败');
-      case OtaStatus.CANCELED:
-        updateStatusText = '更新已取消';
-        downloadingUpdate = false;
-        notifyListeners();
-    }
-  }
-
   Future<void> _saveConfigurationList() {
     return AndroidAutoClickerChannel.saveConfigurationList(
       configurations
           .map((configuration) => configuration.toChannelMap())
           .toList(),
     );
+  }
+
+  void _updateFromConfiguration(ClickConfiguration configuration) {
+    _updateOverlayValues(
+      clicksPerSecond: configuration.clicksPerSecond,
+      jitterRadius: configuration.jitterRadius,
+      targetSize: configuration.targetSize,
+      targetX: configuration.targetX,
+      targetY: configuration.targetY,
+    );
+  }
+
+  void _updateOverlayValues({
+    double? clicksPerSecond,
+    double? jitterRadius,
+    double? targetSize,
+    double? targetX,
+    double? targetY,
+    bool notify = true,
+  }) {
+    this.clicksPerSecond = clicksPerSecond ?? this.clicksPerSecond;
+    this.jitterRadius = jitterRadius ?? this.jitterRadius;
+    this.targetSize = targetSize ?? this.targetSize;
+    this.targetX = targetX ?? this.targetX;
+    this.targetY = targetY ?? this.targetY;
+    if (notify) {
+      notifyListeners();
+    }
+  }
+
+  Future<void> _replaceConfiguration(
+    String configurationId,
+    ClickConfiguration Function(ClickConfiguration current) transform, {
+    ClickConfiguration? syncCurrentValues,
+  }) async {
+    configurations = [
+      for (final item in configurations)
+        if (item.id == configurationId) transform(item) else item,
+    ];
+    if (syncCurrentValues != null) {
+      _updateFromConfiguration(syncCurrentValues);
+      return _saveConfigurationList();
+    }
+    notifyListeners();
+    await _saveConfigurationList();
   }
 }

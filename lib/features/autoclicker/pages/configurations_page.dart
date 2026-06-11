@@ -29,35 +29,33 @@ class ConfigurationsPage extends StatelessWidget {
                 if (controller.configurations.isEmpty)
                   _EmptyConfigurationList(theme: theme)
                 else
-                  for (final configuration in controller.configurations) ...[
+                  for (final indexedConfiguration
+                      in controller.configurations.indexed) ...[
                     _ConfigurationListItem(
-                      configuration: configuration,
-                      active: configuration.matches(
-                        clicksPerSecond: controller.clicksPerSecond,
-                        jitterRadius: controller.jitterRadius,
-                        targetSize: controller.targetSize,
-                        targetX: controller.targetX,
-                        targetY: controller.targetY,
+                      configuration: indexedConfiguration.$2,
+                      active: controller.isActiveConfiguration(
+                        indexedConfiguration.$2,
                       ),
                       canEdit: controller.canStartOverlay,
-                      onRename: (name) {
-                        controller.renameConfiguration(configuration, name);
-                      },
-                      onApply: () {
-                        controller.applyConfiguration(configuration);
-                      },
+                      onRename: (name) => controller.renameConfiguration(
+                        indexedConfiguration.$2,
+                        name,
+                      ),
+                      onApply: () => controller.applyConfiguration(
+                        indexedConfiguration.$2,
+                      ),
                       onBeforeEdit: controller.stopOverlayService,
-                      onEdit: (updatedConfiguration) {
-                        controller.editConfiguration(
-                          configuration,
-                          updatedConfiguration,
-                        );
-                      },
-                      onDelete: () {
-                        controller.deleteConfiguration(configuration);
-                      },
+                      onEdit: (updatedConfiguration) =>
+                          controller.editConfiguration(
+                            indexedConfiguration.$2,
+                            updatedConfiguration,
+                          ),
+                      onDelete: () => controller.deleteConfiguration(
+                        indexedConfiguration.$2,
+                      ),
                     ),
-                    if (configuration != controller.configurations.last)
+                    if (indexedConfiguration.$1 !=
+                        controller.configurations.length - 1)
                       const SizedBox(height: 10),
                   ],
               ],
@@ -257,6 +255,48 @@ class _ConfigurationEditorPageState extends State<_ConfigurationEditorPage> {
   late double _targetY;
   bool _closing = false;
 
+  List<_EditorSliderDefinition> get _sliderDefinitions => [
+    _EditorSliderDefinition(
+      title: '点击频率',
+      valueText: '${_clicksPerSecond.round()} 次/秒',
+      value: _clicksPerSecond,
+      min: 1,
+      max: 20,
+      divisions: 19,
+      onChanged: (value) {
+        setState(() {
+          _clicksPerSecond = value;
+        });
+      },
+    ),
+    _EditorSliderDefinition(
+      title: '默认偏移范围',
+      valueText: '${_jitterRadius.round()} px',
+      value: _jitterRadius,
+      min: 0,
+      max: 24,
+      divisions: 24,
+      onChanged: (value) {
+        setState(() {
+          _jitterRadius = value;
+        });
+      },
+    ),
+    _EditorSliderDefinition(
+      title: '准星大小',
+      valueText: '${_targetSize.round()} px',
+      value: _targetSize,
+      min: 32,
+      max: 64,
+      divisions: 22,
+      onChanged: (value) {
+        setState(() {
+          _targetSize = value;
+        });
+      },
+    ),
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -307,57 +347,21 @@ class _ConfigurationEditorPageState extends State<_ConfigurationEditorPage> {
                         isDense: true,
                       ),
                     ),
-                    const SizedBox(height: 18),
-                    SliderSetting(
-                      title: '点击频率',
-                      valueText: '${_clicksPerSecond.round()} 次/秒',
-                      value: _clicksPerSecond,
-                      min: 1,
-                      max: 20,
-                      divisions: 19,
-                      onChanged: (value) {
-                        setState(() {
-                          _clicksPerSecond = value;
-                        });
-                      },
-                      onChangeEnd: (_) {
-                        _syncEditableTarget();
-                      },
-                    ),
-                    const SizedBox(height: 18),
-                    SliderSetting(
-                      title: '默认偏移范围',
-                      valueText: '${_jitterRadius.round()} px',
-                      value: _jitterRadius,
-                      min: 0,
-                      max: 24,
-                      divisions: 24,
-                      onChanged: (value) {
-                        setState(() {
-                          _jitterRadius = value;
-                        });
-                      },
-                      onChangeEnd: (_) {
-                        _syncEditableTarget();
-                      },
-                    ),
-                    const SizedBox(height: 18),
-                    SliderSetting(
-                      title: '准星大小',
-                      valueText: '${_targetSize.round()} px',
-                      value: _targetSize,
-                      min: 32,
-                      max: 64,
-                      divisions: 22,
-                      onChanged: (value) {
-                        setState(() {
-                          _targetSize = value;
-                        });
-                      },
-                      onChangeEnd: (_) {
-                        _syncEditableTarget();
-                      },
-                    ),
+                    for (final slider in _sliderDefinitions) ...[
+                      const SizedBox(height: 18),
+                      SliderSetting(
+                        title: slider.title,
+                        valueText: slider.valueText,
+                        value: slider.value,
+                        min: slider.min,
+                        max: slider.max,
+                        divisions: slider.divisions,
+                        onChanged: slider.onChanged,
+                        onChangeEnd: (_) {
+                          _syncEditableTarget();
+                        },
+                      ),
+                    ],
                     const SizedBox(height: 18),
                     Container(
                       padding: const EdgeInsets.all(14),
@@ -474,4 +478,24 @@ class _EmptyConfigurationList extends StatelessWidget {
       ),
     );
   }
+}
+
+class _EditorSliderDefinition {
+  const _EditorSliderDefinition({
+    required this.title,
+    required this.valueText,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.divisions,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String valueText;
+  final double value;
+  final double min;
+  final double max;
+  final int divisions;
+  final ValueChanged<double> onChanged;
 }

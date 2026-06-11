@@ -22,7 +22,6 @@ class AutoClickerApp extends StatelessWidget {
       theme: ShadThemeData(
         brightness: Brightness.light,
         colorScheme: const ShadRoseColorScheme.light(
-          background: Color(0xFFFFFBFC),
           primary: _bilibiliPink,
           primaryForeground: Colors.white,
           secondary: _bilibiliPinkSoft,

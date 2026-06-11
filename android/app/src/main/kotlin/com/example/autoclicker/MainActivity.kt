@@ -7,20 +7,20 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.net.Uri
 import android.provider.Settings
+import android.widget.Toast
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
-import org.json.JSONArray
-import org.json.JSONObject
 
 class MainActivity : FlutterActivity() {
     private companion object {
-        const val CONFIGURATION_LIST_KEY = "configurationList"
+        const val INSTALLER_CHANNEL_NAME = "autoclicker/installer"
     }
 
     private val channelName = "autoclicker/android"
-    private val preferencesName = FloatingOverlayService.PREFERENCES_NAME
+    private val preferencesName = OVERLAY_PREFERENCES_NAME
     private var channel: MethodChannel? = null
     private var configurationListReceiverRegistered = false
     private val configurationListChangedReceiver = object : BroadcastReceiver() {
@@ -61,17 +61,8 @@ class MainActivity : FlutterActivity() {
 
                         startService(
                             overlayServiceIntent(
-                                clicksPerSecond = call.argument<Double>("clicksPerSecond")
-                                    ?: FloatingOverlayService.DEFAULT_CLICKS_PER_SECOND,
-                                jitterRadius = call.argument<Double>("jitterRadius")
-                                    ?: FloatingOverlayService.DEFAULT_JITTER_RADIUS,
-                                targetSize = call.argument<Double>("targetSize")
-                                    ?: FloatingOverlayService.DEFAULT_TARGET_SIZE,
-                                targetX = call.argument<Double>("targetX")
-                                    ?: FloatingOverlayService.DEFAULT_TARGET_X.toDouble(),
-                                targetY = call.argument<Double>("targetY")
-                                    ?: FloatingOverlayService.DEFAULT_TARGET_Y.toDouble(),
-                                targetOnly = call.argument<Boolean>("targetOnly") ?: false
+                                overlayConfig = call.readOverlayConfig(),
+                                targetOnly = call.isTargetOnly(),
                             )
                         )
                         result.success(true)
@@ -82,29 +73,14 @@ class MainActivity : FlutterActivity() {
                     }
 
                     "saveOverlayConfiguration" -> {
-                        val clicksPerSecond = call.argument<Double>("clicksPerSecond") ?: FloatingOverlayService.DEFAULT_CLICKS_PER_SECOND
-                        val jitterRadius = call.argument<Double>("jitterRadius") ?: FloatingOverlayService.DEFAULT_JITTER_RADIUS
-                        val targetSize = call.argument<Double>("targetSize") ?: FloatingOverlayService.DEFAULT_TARGET_SIZE
-                        val targetX = call.argument<Double>("targetX") ?: FloatingOverlayService.DEFAULT_TARGET_X.toDouble()
-                        val targetY = call.argument<Double>("targetY") ?: FloatingOverlayService.DEFAULT_TARGET_Y.toDouble()
-
-                        saveOverlayConfiguration(
-                            clicksPerSecond = clicksPerSecond,
-                            jitterRadius = jitterRadius,
-                            targetSize = targetSize,
-                            targetX = targetX,
-                            targetY = targetY
-                        )
+                        val overlayConfig = call.readOverlayConfig()
+                        saveOverlayConfiguration(overlayConfig)
 
                         if (canDrawOverlays()) {
                             startService(
                                 overlayServiceIntent(
                                     action = FloatingOverlayService.ACTION_SAVE_CONFIGURATION,
-                                    clicksPerSecond = clicksPerSecond,
-                                    jitterRadius = jitterRadius,
-                                    targetSize = targetSize,
-                                    targetX = targetX,
-                                    targetY = targetY
+                                    overlayConfig = overlayConfig,
                                 )
                             )
                         }
@@ -135,6 +111,26 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, INSTALLER_CHANNEL_NAME).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "canRequestPackageInstalls" -> {
+                    result.success(canRequestPackageInstalls())
+                }
+
+                "openInstallPermissionSettings" -> {
+                    openInstallPermissionSettings()
+                    result.success(null)
+                }
+
+                "showToast" -> {
+                    showToast(call.argument<String>("message") ?: "")
+                    result.success(null)
+                }
+
+                else -> result.notImplemented()
+            }
+        }
     }
 
     override fun onStart() {
@@ -160,105 +156,54 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun loadConfigurationList(): List<Map<String, Any>> {
-        val saved = preferences()
-            .getString(CONFIGURATION_LIST_KEY, null)
-            ?: return emptyList()
-        val array = JSONArray(saved)
-        return List(array.length()) { index ->
-            val item = array.getJSONObject(index)
+        return OverlayConfig.listFromPreferences(preferences(), CONFIGURATION_LIST_KEY).map { item ->
+            val overlayConfig = OverlayConfig.fromJson(item)
             mapOf(
                 "id" to item.optString("id"),
                 "name" to item.optString("name"),
-                "clicksPerSecond" to item.optDouble("clicksPerSecond", FloatingOverlayService.DEFAULT_CLICKS_PER_SECOND),
-                "jitterRadius" to item.optDouble("jitterRadius", FloatingOverlayService.DEFAULT_JITTER_RADIUS),
-                "targetSize" to item.optDouble("targetSize", FloatingOverlayService.DEFAULT_TARGET_SIZE),
-                "targetX" to item.optDouble("targetX", FloatingOverlayService.DEFAULT_TARGET_X.toDouble()),
-                "targetY" to item.optDouble("targetY", FloatingOverlayService.DEFAULT_TARGET_Y.toDouble())
+                "clicksPerSecond" to overlayConfig.clicksPerSecond,
+                "jitterRadius" to overlayConfig.jitterRadius,
+                "targetSize" to overlayConfig.targetSize,
+                "targetX" to overlayConfig.targetX.toDouble(),
+                "targetY" to overlayConfig.targetY.toDouble(),
             )
         }
     }
 
     private fun saveConfigurationList(configurations: List<Map<String, Any?>>) {
-        val array = JSONArray()
-        configurations.forEach { item ->
-            array.put(
-                JSONObject().apply {
-                    put("id", item["id"] as? String ?: "")
-                    put("name", item["name"] as? String ?: "")
-                    put("clicksPerSecond", (item["clicksPerSecond"] as? Number)?.toDouble() ?: FloatingOverlayService.DEFAULT_CLICKS_PER_SECOND)
-                    put("jitterRadius", (item["jitterRadius"] as? Number)?.toDouble() ?: FloatingOverlayService.DEFAULT_JITTER_RADIUS)
-                    put("targetSize", (item["targetSize"] as? Number)?.toDouble() ?: FloatingOverlayService.DEFAULT_TARGET_SIZE)
-                    put("targetX", (item["targetX"] as? Number)?.toDouble() ?: FloatingOverlayService.DEFAULT_TARGET_X.toDouble())
-                    put("targetY", (item["targetY"] as? Number)?.toDouble() ?: FloatingOverlayService.DEFAULT_TARGET_Y.toDouble())
-                }
-            )
-        }
-        preferences()
-            .edit()
-            .putString(CONFIGURATION_LIST_KEY, array.toString())
-            .apply()
+        OverlayConfig.saveListToPreferences(
+            preferences(),
+            CONFIGURATION_LIST_KEY,
+            configurations.map { item ->
+                item.toOverlayConfig().toJson(
+                    id = item["id"] as? String ?: "",
+                    name = item["name"] as? String ?: "",
+                )
+            },
+        )
     }
 
     private fun preferences() = getSharedPreferences(preferencesName, Context.MODE_PRIVATE)
 
     private fun loadOverlayConfiguration(): Map<String, Double> {
-        val preferences = preferences()
-        return mapOf(
-            "clicksPerSecond" to preferences.getFloat(
-                "clicksPerSecond",
-                FloatingOverlayService.DEFAULT_CLICKS_PER_SECOND.toFloat()
-            ).toDouble(),
-            "jitterRadius" to preferences.getFloat(
-                "jitterRadius",
-                FloatingOverlayService.DEFAULT_JITTER_RADIUS.toFloat()
-            ).toDouble(),
-            "targetSize" to preferences.getFloat(
-                "targetSize",
-                FloatingOverlayService.DEFAULT_TARGET_SIZE.toFloat()
-            ).toDouble(),
-            "targetX" to preferences.getInt(
-                "targetX",
-                FloatingOverlayService.DEFAULT_TARGET_X
-            ).toDouble(),
-            "targetY" to preferences.getInt(
-                "targetY",
-                FloatingOverlayService.DEFAULT_TARGET_Y
-            ).toDouble()
-        )
+        return OverlayConfig.fromPreferences(preferences()).toPreferenceMap()
     }
 
-    private fun saveOverlayConfiguration(
-        clicksPerSecond: Double,
-        jitterRadius: Double,
-        targetSize: Double,
-        targetX: Double,
-        targetY: Double
-    ) {
-        preferences()
-            .edit()
-            .putFloat("clicksPerSecond", clicksPerSecond.toFloat())
-            .putFloat("jitterRadius", jitterRadius.toFloat())
-            .putFloat("targetSize", targetSize.toFloat())
-            .putInt("targetX", targetX.toInt())
-            .putInt("targetY", targetY.toInt())
-            .apply()
+    private fun saveOverlayConfiguration(overlayConfig: OverlayConfig) {
+        overlayConfig.saveToPreferences(preferences())
     }
 
     private fun overlayServiceIntent(
         action: String? = null,
-        clicksPerSecond: Double,
-        jitterRadius: Double,
-        targetSize: Double,
-        targetX: Double,
-        targetY: Double,
+        overlayConfig: OverlayConfig,
         targetOnly: Boolean = false
     ) = Intent(this, FloatingOverlayService::class.java).apply {
         this.action = action
-        putExtra("clicksPerSecond", clicksPerSecond)
-        putExtra("jitterRadius", jitterRadius)
-        putExtra("targetSize", targetSize)
-        putExtra("targetX", targetX)
-        putExtra("targetY", targetY)
+        putExtra("clicksPerSecond", overlayConfig.clicksPerSecond)
+        putExtra("jitterRadius", overlayConfig.jitterRadius)
+        putExtra("targetSize", overlayConfig.targetSize)
+        putExtra("targetX", overlayConfig.targetX.toDouble())
+        putExtra("targetY", overlayConfig.targetY.toDouble())
         putExtra("targetOnly", targetOnly)
     }
 
@@ -274,6 +219,24 @@ class MainActivity : FlutterActivity() {
         startActivity(intent)
     }
 
+    private fun canRequestPackageInstalls(): Boolean {
+        return packageManager.canRequestPackageInstalls()
+    }
+
+    private fun openInstallPermissionSettings() {
+        val intent = Intent(
+            Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+            Uri.parse("package:$packageName"),
+        ).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        startActivity(intent)
+    }
+
+    private fun showToast(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    }
+
     private fun isAccessibilityServiceEnabled(): Boolean {
         val expectedServiceName = ComponentName(
             this,
@@ -287,5 +250,31 @@ class MainActivity : FlutterActivity() {
         return enabledServices.split(':').any {
             it.equals(expectedServiceName, ignoreCase = true)
         }
+    }
+
+    private fun MethodCall.readOverlayConfig(): OverlayConfig {
+        return OverlayConfig.fromMethodCall(this)
+    }
+
+    private fun MethodCall.isTargetOnly(): Boolean {
+        return argument<Boolean>("targetOnly") ?: false
+    }
+
+    private fun Map<String, Any?>.toOverlayConfig(): OverlayConfig {
+        return OverlayConfig(
+            clicksPerSecond =
+                (this["clicksPerSecond"] as? Number)?.toDouble()
+                    ?: OverlayConfig.DEFAULT_CLICKS_PER_SECOND,
+            jitterRadius =
+                (this["jitterRadius"] as? Number)?.toDouble()
+                    ?: OverlayConfig.DEFAULT_JITTER_RADIUS,
+            targetSize =
+                (this["targetSize"] as? Number)?.toDouble()
+                    ?: OverlayConfig.DEFAULT_TARGET_SIZE,
+            targetX =
+                (this["targetX"] as? Number)?.toDouble()?.toInt() ?: OverlayConfig.DEFAULT_TARGET_X,
+            targetY =
+                (this["targetY"] as? Number)?.toDouble()?.toInt() ?: OverlayConfig.DEFAULT_TARGET_Y,
+        )
     }
 }

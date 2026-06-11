@@ -15,12 +15,18 @@ class AutoClickerHomePage extends StatefulWidget {
 
 class _AutoClickerHomePageState extends State<AutoClickerHomePage> {
   late final AutoClickerController _controller;
+  late final List<Widget> _pages;
   int _selectedIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _controller = AutoClickerController()..init();
+    _pages = [
+      ControlPage(controller: _controller),
+      ConfigurationsPage(controller: _controller),
+      UpdatePage(controller: _controller),
+    ];
     _controller.addListener(_onControllerChanged);
   }
 
@@ -39,15 +45,10 @@ class _AutoClickerHomePageState extends State<AutoClickerHomePage> {
   @override
   Widget build(BuildContext context) {
     final theme = ShadTheme.of(context);
-    final pages = [
-      ControlPage(controller: _controller),
-      ConfigurationsPage(controller: _controller),
-      UpdatePage(controller: _controller),
-    ];
 
     return Scaffold(
       body: SafeArea(
-        child: IndexedStack(index: _selectedIndex, children: pages),
+        child: IndexedStack(index: _selectedIndex, children: _pages),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,

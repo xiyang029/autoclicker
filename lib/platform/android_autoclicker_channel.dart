@@ -9,13 +9,27 @@ class AndroidOverlayDefaults {
   static const targetX = 180.0;
   static const targetY = 300.0;
 
-  static const configuration = {
+  static const configuration = <String, double>{
     'clicksPerSecond': clicksPerSecond,
     'jitterRadius': jitterRadius,
     'targetSize': targetSize,
     'targetX': targetX,
     'targetY': targetY,
   };
+
+  static Map<String, double> merge(Map<String, Object?>? configuration) {
+    return {
+      'clicksPerSecond':
+          (configuration?['clicksPerSecond'] as num?)?.toDouble() ??
+          clicksPerSecond,
+      'jitterRadius':
+          (configuration?['jitterRadius'] as num?)?.toDouble() ?? jitterRadius,
+      'targetSize':
+          (configuration?['targetSize'] as num?)?.toDouble() ?? targetSize,
+      'targetX': (configuration?['targetX'] as num?)?.toDouble() ?? targetX,
+      'targetY': (configuration?['targetY'] as num?)?.toDouble() ?? targetY,
+    };
+  }
 }
 
 class AndroidAutoClickerChannel {
@@ -67,26 +81,11 @@ class AndroidAutoClickerChannel {
 
   static Future<Map<String, double>> loadOverlayConfiguration() async {
     try {
-      final result = await _channel.invokeMapMethod<String, Object?>(
-        'loadOverlayConfiguration',
+      return AndroidOverlayDefaults.merge(
+        await _channel.invokeMapMethod<String, Object?>(
+          'loadOverlayConfiguration',
+        ),
       );
-      return {
-        'clicksPerSecond':
-            (result?['clicksPerSecond'] as num?)?.toDouble() ??
-            AndroidOverlayDefaults.configuration['clicksPerSecond']!,
-        'jitterRadius':
-            (result?['jitterRadius'] as num?)?.toDouble() ??
-            AndroidOverlayDefaults.configuration['jitterRadius']!,
-        'targetSize':
-            (result?['targetSize'] as num?)?.toDouble() ??
-            AndroidOverlayDefaults.configuration['targetSize']!,
-        'targetX':
-            (result?['targetX'] as num?)?.toDouble() ??
-            AndroidOverlayDefaults.configuration['targetX']!,
-        'targetY':
-            (result?['targetY'] as num?)?.toDouble() ??
-            AndroidOverlayDefaults.configuration['targetY']!,
-      };
     } on MissingPluginException {
       return AndroidOverlayDefaults.configuration;
     }

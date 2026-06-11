@@ -12,24 +12,15 @@ class ClickConfiguration {
   });
 
   factory ClickConfiguration.fromChannelMap(Map<String, Object?> map) {
+    final configuration = AndroidOverlayDefaults.merge(map);
     return ClickConfiguration(
       id: map['id'] as String? ?? '',
       name: map['name'] as String? ?? '',
-      clicksPerSecond:
-          (map['clicksPerSecond'] as num?)?.toDouble() ??
-          AndroidOverlayDefaults.clicksPerSecond,
-      jitterRadius:
-          (map['jitterRadius'] as num?)?.toDouble() ??
-          AndroidOverlayDefaults.jitterRadius,
-      targetSize:
-          (map['targetSize'] as num?)?.toDouble() ??
-          AndroidOverlayDefaults.targetSize,
-      targetX:
-          (map['targetX'] as num?)?.toDouble() ??
-          AndroidOverlayDefaults.targetX,
-      targetY:
-          (map['targetY'] as num?)?.toDouble() ??
-          AndroidOverlayDefaults.targetY,
+      clicksPerSecond: configuration['clicksPerSecond']!,
+      jitterRadius: configuration['jitterRadius']!,
+      targetSize: configuration['targetSize']!,
+      targetX: configuration['targetX']!,
+      targetY: configuration['targetY']!,
     );
   }
 

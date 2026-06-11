@@ -13,6 +13,36 @@ class ControlPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = ShadTheme.of(context);
+    final currentConfiguration = controller.currentConfiguration;
+    final sliderSections = [
+      _ControlSliderSection(
+        title: '点击频率',
+        valueText: '${currentConfiguration.clicksPerSecond.round()} 次/秒',
+        value: currentConfiguration.clicksPerSecond,
+        min: 1,
+        max: 20,
+        divisions: 19,
+        onChanged: controller.setClicksPerSecond,
+      ),
+      _ControlSliderSection(
+        title: '默认偏移范围',
+        valueText: '${currentConfiguration.jitterRadius.round()} px',
+        value: currentConfiguration.jitterRadius,
+        min: 0,
+        max: 24,
+        divisions: 24,
+        onChanged: controller.setJitterRadius,
+      ),
+      _ControlSliderSection(
+        title: '准星大小',
+        valueText: '${currentConfiguration.targetSize.round()} px',
+        value: currentConfiguration.targetSize,
+        min: 32,
+        max: 64,
+        divisions: 22,
+        onChanged: controller.setTargetSize,
+      ),
+    ];
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
@@ -71,44 +101,22 @@ class ControlPage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SliderSetting(
-                  title: '点击频率',
-                  valueText: '${controller.clicksPerSecond.round()} 次/秒',
-                  value: controller.clicksPerSecond,
-                  min: 1,
-                  max: 20,
-                  divisions: 19,
-                  onChanged: controller.setClicksPerSecond,
-                  onChangeEnd: (_) {
-                    controller.syncOverlayConfiguration();
-                  },
-                ),
-                const SizedBox(height: 22),
-                SliderSetting(
-                  title: '默认偏移范围',
-                  valueText: '${controller.jitterRadius.round()} px',
-                  value: controller.jitterRadius,
-                  min: 0,
-                  max: 24,
-                  divisions: 24,
-                  onChanged: controller.setJitterRadius,
-                  onChangeEnd: (_) {
-                    controller.syncOverlayConfiguration();
-                  },
-                ),
-                const SizedBox(height: 22),
-                SliderSetting(
-                  title: '准星大小',
-                  valueText: '${controller.targetSize.round()} px',
-                  value: controller.targetSize,
-                  min: 32,
-                  max: 64,
-                  divisions: 22,
-                  onChanged: controller.setTargetSize,
-                  onChangeEnd: (_) {
-                    controller.syncOverlayConfiguration();
-                  },
-                ),
+                for (final indexedSlider in sliderSections.indexed) ...[
+                  SliderSetting(
+                    title: indexedSlider.$2.title,
+                    valueText: indexedSlider.$2.valueText,
+                    value: indexedSlider.$2.value,
+                    min: indexedSlider.$2.min,
+                    max: indexedSlider.$2.max,
+                    divisions: indexedSlider.$2.divisions,
+                    onChanged: indexedSlider.$2.onChanged,
+                    onChangeEnd: (_) {
+                      controller.syncOverlayConfiguration();
+                    },
+                  ),
+                  if (indexedSlider.$1 != sliderSections.length - 1)
+                    const SizedBox(height: 22),
+                ],
                 const SizedBox(height: 24),
                 SizedBox(
                   width: double.infinity,
@@ -125,6 +133,26 @@ class ControlPage extends StatelessWidget {
       ],
     );
   }
+}
+
+class _ControlSliderSection {
+  const _ControlSliderSection({
+    required this.title,
+    required this.valueText,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.divisions,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String valueText;
+  final double value;
+  final double min;
+  final double max;
+  final int divisions;
+  final ValueChanged<double> onChanged;
 }
 
 class _PermissionRow extends StatelessWidget {
