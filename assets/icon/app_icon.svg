@@ -1,0 +1,42 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="160" y1="120" x2="864" y2="904" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF9A5A"/>
+      <stop offset="0.52" stop-color="#FF6A5C"/>
+      <stop offset="1" stop-color="#F43F5E"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(326 262) rotate(45) scale(522)">
+      <stop stop-color="#FFF3D6" stop-opacity="0.72"/>
+      <stop offset="1" stop-color="#FFF3D6" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadow" x="172" y="168" width="680" height="688" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="28"/>
+      <feGaussianBlur stdDeviation="24"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.458824 0 0 0 0 0.0509804 0 0 0 0 0.188235 0 0 0 0.26 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_0_1"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_0_1" result="shape"/>
+    </filter>
+  </defs>
+
+  <rect x="64" y="64" width="896" height="896" rx="248" fill="url(#bg)"/>
+  <rect x="64" y="64" width="896" height="896" rx="248" fill="url(#glow)"/>
+
+  <g filter="url(#shadow)">
+    <circle cx="472" cy="476" r="220" stroke="white" stroke-width="62" stroke-opacity="0.94"/>
+    <circle cx="472" cy="476" r="130" stroke="white" stroke-width="38" stroke-opacity="0.94"/>
+    <circle cx="472" cy="476" r="48" fill="#FFFFFF"/>
+    <circle cx="472" cy="476" r="18" fill="#14213D"/>
+
+    <circle cx="304" cy="314" r="26" fill="#FFF2CC" fill-opacity="0.94"/>
+    <circle cx="270" cy="398" r="18" fill="#FFF2CC" fill-opacity="0.84"/>
+    <circle cx="648" cy="270" r="20" fill="#FFF2CC" fill-opacity="0.88"/>
+
+    <path d="M592 592L770 538L684 720L635 671L556 752L510 706L588 628L592 592Z" fill="#2DD4BF"/>
+    <path d="M592 592L770 538L684 720L635 671L556 752L510 706L588 628L592 592Z" stroke="#FFFFFF" stroke-width="24" stroke-linejoin="round"/>
+
+    <path d="M708 312C736 322 760 346 770 376" stroke="#FFF4DE" stroke-width="28" stroke-linecap="round"/>
+    <path d="M744 268C784 284 816 317 830 356" stroke="#FFF4DE" stroke-width="24" stroke-linecap="round" stroke-opacity="0.82"/>
+  </g>
+</svg>
