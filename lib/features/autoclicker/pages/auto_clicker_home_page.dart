@@ -50,6 +50,7 @@ class _AutoClickerHomePageState extends State<AutoClickerHomePage> {
         child: IndexedStack(index: _selectedIndex, children: pages),
       ),
       bottomNavigationBar: NavigationBar(
+        height: 52,
         selectedIndex: _selectedIndex,
         backgroundColor: theme.colorScheme.background,
         indicatorColor: theme.colorScheme.secondary,

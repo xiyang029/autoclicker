@@ -18,6 +18,14 @@ class AppInstallerPlatformService {
     return _channel.invokeMethod<void>('openInstallPermissionSettings');
   }
 
+  static Future<String> getDeviceAbi() async {
+    try {
+      return await _channel.invokeMethod<String>('getDeviceAbi') ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
   static Future<void> showToast(String message) async {
     try {
       await _channel.invokeMethod<void>('showToast', {'message': message});

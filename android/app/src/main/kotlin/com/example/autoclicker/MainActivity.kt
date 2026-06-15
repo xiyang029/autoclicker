@@ -128,15 +128,19 @@ class MainActivity : FlutterActivity() {
                     result.success(canRequestPackageInstalls())
                 }
 
-                "openInstallPermissionSettings" -> {
-                    openInstallPermissionSettings()
-                    result.success(null)
-                }
+                    "openInstallPermissionSettings" -> {
+                        openInstallPermissionSettings()
+                        result.success(null)
+                    }
 
-                "showToast" -> {
-                    showToast(call.argument<String>("message") ?: "")
-                    result.success(null)
-                }
+                    "getDeviceAbi" -> {
+                        result.success(getDeviceAbi())
+                    }
+
+                    "showToast" -> {
+                        showToast(call.argument<String>("message") ?: "")
+                        result.success(null)
+                    }
 
                 else -> result.notImplemented()
             }
@@ -261,6 +265,10 @@ class MainActivity : FlutterActivity() {
 
     private fun showToast(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun getDeviceAbi(): String {
+        return android.os.Build.SUPPORTED_ABIS.firstOrNull().orEmpty()
     }
 
     private fun isAccessibilityServiceEnabled(): Boolean {

@@ -244,6 +244,10 @@ class _UpdatePageState extends State<UpdatePage> with WidgetsBindingObserver {
 
   Future<bool> _confirmDownload(AppReleaseInfo release) async {
     final currentVersion = widget.controller.currentVersion;
+    final deviceAbi = await AppInstallerPlatformService.getDeviceAbi();
+    final asset = release.assetForAbi(deviceAbi);
+    if (!mounted) return false;
+
     final shouldDownload = await showShadDialog<bool>(
       context: context,
       builder: (context) {
@@ -254,7 +258,8 @@ class _UpdatePageState extends State<UpdatePage> with WidgetsBindingObserver {
           title: const Text('发现新版本'),
           description: Text(
             '当前版本 ${currentVersion.isEmpty ? '未知' : currentVersion}，'
-            '最新版本 ${release.version}。',
+            '最新版本 ${release.version}，'
+            '将下载 ${asset?.abiLabel ?? '默认'} 版本。',
           ),
           actions: [
             ShadButton.outline(
