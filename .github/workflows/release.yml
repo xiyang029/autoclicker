@@ -33,46 +33,31 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Read version
+      - name: Read version and check for changes
         id: version
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
-
+          # 提取 pubspec.yaml 中的版本号
           current_version="$(grep -E '^version:' pubspec.yaml | awk '{print $2}')"
           version_name="${current_version%%+*}"
           version_code="${current_version##*+}"
 
-          latest_tag="$(python - <<'PY'
-import json
-import urllib.request
-
-request = urllib.request.Request(
-    "https://api.github.com/repos/xiyang029/autoclicker/releases/latest",
-    headers={"Accept": "application/vnd.github+json", "User-Agent": "codex"},
-)
-
-try:
-    with urllib.request.urlopen(request, timeout=20) as response:
-        data = json.load(response)
-except Exception:
-    print("")
-else:
-    print(data.get("tag_name", ""))
-PY
-)"
+          # 使用 GitHub CLI 获取最新发布版本
+          # 如果没有发布过版本，latest_tag 将为空
+          latest_tag=$(gh release list --limit 1 --json tagName --jq '.[0].tagName // ""')
 
           if [[ -n "${latest_tag}" && "${latest_tag}" == "${version_name}" ]]; then
             echo "Latest release already matches version: ${version_name}"
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            exit 0
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "current=${current_version}" >> "$GITHUB_OUTPUT"
+            echo "version_name=${version_name}" >> "$GITHUB_OUTPUT"
+            echo "version_code=${version_code}" >> "$GITHUB_OUTPUT"
+            echo "latest_tag=${latest_tag}" >> "$GITHUB_OUTPUT"
           fi
-
-          echo "changed=true" >> "$GITHUB_OUTPUT"
-          echo "current=${current_version}" >> "$GITHUB_OUTPUT"
-          echo "version_name=${version_name}" >> "$GITHUB_OUTPUT"
-          echo "version_code=${version_code}" >> "$GITHUB_OUTPUT"
-          echo "latest_tag=${latest_tag}" >> "$GITHUB_OUTPUT"
 
       - name: Stop when version did not change
         if: steps.version.outputs.changed != 'true'
@@ -90,12 +75,12 @@ PY
 
       - name: Build release APKs
         if: steps.version.outputs.changed == 'true'
-        run: >
-          flutter build apk
-          --release
-          --split-per-abi
-          --obfuscate
-          --split-debug-info=build/app/outputs/symbols
+        run: |
+          flutter build apk \
+          --release \
+          --split-per-abi \
+          --obfuscate \
+          --split-debug-info=build/app/outputs/symbols \
           --no-tree-shake-icons
 
       - name: Create GitHub Release
