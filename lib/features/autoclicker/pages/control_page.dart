@@ -13,12 +13,11 @@ class ControlPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = ShadTheme.of(context);
-    final currentConfiguration = controller.currentConfiguration;
     final sliderSections = [
       _ControlSliderSection(
         title: '点击频率',
-        valueText: '${currentConfiguration.clicksPerSecond.round()} 次/秒',
-        value: currentConfiguration.clicksPerSecond,
+        valueText: '${controller.clicksPerSecond.round()} 次/秒',
+        value: controller.clicksPerSecond,
         min: 1,
         max: 20,
         divisions: 19,
@@ -26,8 +25,8 @@ class ControlPage extends StatelessWidget {
       ),
       _ControlSliderSection(
         title: '默认偏移范围',
-        valueText: '${currentConfiguration.jitterRadius.round()} px',
-        value: currentConfiguration.jitterRadius,
+        valueText: '${controller.jitterRadius.round()} px',
+        value: controller.jitterRadius,
         min: 0,
         max: 24,
         divisions: 24,
@@ -35,8 +34,8 @@ class ControlPage extends StatelessWidget {
       ),
       _ControlSliderSection(
         title: '准星大小',
-        valueText: '${currentConfiguration.targetSize.round()} px',
-        value: currentConfiguration.targetSize,
+        valueText: '${controller.targetSize.round()} px',
+        value: controller.targetSize,
         min: 32,
         max: 64,
         divisions: 22,

@@ -37,20 +37,11 @@ class AutoClickerController extends ChangeNotifier with WidgetsBindingObserver {
     );
   }
 
-  ClickConfiguration get currentConfiguration => ClickConfiguration(
-    id: '',
-    name: '',
-    clicksPerSecond: clicksPerSecond,
-    jitterRadius: jitterRadius,
-    targetSize: targetSize,
-    targetX: targetX,
-    targetY: targetY,
-  );
-
   void init() {
     WidgetsBinding.instance.addObserver(this);
-    AndroidAutoClickerChannel.setConfigurationListChangedHandler(
-      loadConfigurationList,
+    AndroidAutoClickerChannel.setEventHandlers(
+      onConfigurationListChanged: loadConfigurationList,
+      onOverlayServiceStopped: _handleOverlayServiceStopped,
     );
     loadAppVersionName();
     loadSavedConfiguration();
@@ -61,7 +52,7 @@ class AutoClickerController extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void dispose() {
     _disposed = true;
-    AndroidAutoClickerChannel.setConfigurationListChangedHandler(null);
+    AndroidAutoClickerChannel.setEventHandlers();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -69,6 +60,7 @@ class AutoClickerController extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      refreshOverlayRunningState();
       refreshPermissions();
       loadSavedConfiguration();
       loadConfigurationList();
@@ -76,14 +68,14 @@ class AutoClickerController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> refreshPermissions() async {
-    final overlayGranted =
-        await AndroidAutoClickerChannel.isOverlayPermissionGranted();
-    final accessibilityGranted =
-        await AndroidAutoClickerChannel.isAccessibilityPermissionGranted();
+    final permissions = await Future.wait<bool>([
+      AndroidAutoClickerChannel.isOverlayPermissionGranted(),
+      AndroidAutoClickerChannel.isAccessibilityPermissionGranted(),
+    ]);
 
     if (_disposed) return;
-    overlayPermissionGranted = overlayGranted;
-    accessibilityPermissionGranted = accessibilityGranted;
+    overlayPermissionGranted = permissions[0];
+    accessibilityPermissionGranted = permissions[1];
     notifyListeners();
   }
 
@@ -224,6 +216,15 @@ class AutoClickerController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
+  Future<void> refreshOverlayRunningState() async {
+    final running = await AndroidAutoClickerChannel.isOverlayServiceRunning();
+    if (_disposed) return;
+    if (overlayServiceRunning == running) return;
+
+    overlayServiceRunning = running;
+    notifyListeners();
+  }
+
   Future<void> syncOverlayConfiguration() async {
     if (!overlayServiceRunning || !canStartOverlay) return;
 
@@ -287,5 +288,12 @@ class AutoClickerController extends ChangeNotifier with WidgetsBindingObserver {
     }
     notifyListeners();
     await _saveConfigurationList();
+  }
+
+  void _handleOverlayServiceStopped() {
+    if (_disposed || !overlayServiceRunning) return;
+
+    overlayServiceRunning = false;
+    notifyListeners();
   }
 }

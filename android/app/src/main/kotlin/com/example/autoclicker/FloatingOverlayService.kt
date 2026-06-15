@@ -27,6 +27,8 @@ class FloatingOverlayService : Service() {
         const val ACTION_SAVE_CONFIGURATION = "com.example.autoclicker.SAVE_CONFIGURATION"
         const val ACTION_CONFIGURATION_LIST_CHANGED =
             "com.example.autoclicker.CONFIGURATION_LIST_CHANGED"
+        const val ACTION_OVERLAY_SERVICE_STOPPED =
+            "com.example.autoclicker.OVERLAY_SERVICE_STOPPED"
     }
 
     private lateinit var windowManager: WindowManager
@@ -43,6 +45,7 @@ class FloatingOverlayService : Service() {
     override fun onCreate() {
         super.onCreate()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        preferences().setOverlayServiceRunning(true)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -73,6 +76,8 @@ class FloatingOverlayService : Service() {
     override fun onDestroy() {
         stopClickLoop()
         removeOverlay()
+        preferences().setOverlayServiceRunning(false)
+        sendBroadcast(Intent(ACTION_OVERLAY_SERVICE_STOPPED).setPackage(packageName))
         super.onDestroy()
     }
 

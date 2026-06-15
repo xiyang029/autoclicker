@@ -23,9 +23,15 @@ class MainActivity : FlutterActivity() {
     private val preferencesName = OVERLAY_PREFERENCES_NAME
     private var channel: MethodChannel? = null
     private var configurationListReceiverRegistered = false
+    private var overlayServiceStoppedReceiverRegistered = false
     private val configurationListChangedReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             channel?.invokeMethod("configurationListChanged", null)
+        }
+    }
+    private val overlayServiceStoppedReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            channel?.invokeMethod("overlayServiceStopped", null)
         }
     }
 
@@ -41,6 +47,10 @@ class MainActivity : FlutterActivity() {
 
                     "isAccessibilityPermissionGranted" -> {
                         result.success(isAccessibilityServiceEnabled())
+                    }
+
+                    "isOverlayServiceRunning" -> {
+                        result.success(preferences().readOverlayServiceRunning())
                     }
 
                     "openOverlaySettings" -> {
@@ -135,22 +145,38 @@ class MainActivity : FlutterActivity() {
 
     override fun onStart() {
         super.onStart()
-        if (configurationListReceiverRegistered) return
+        if (!configurationListReceiverRegistered) {
+            val filter = IntentFilter(FloatingOverlayService.ACTION_CONFIGURATION_LIST_CHANGED)
+            ContextCompat.registerReceiver(
+                this,
+                configurationListChangedReceiver,
+                filter,
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+            configurationListReceiverRegistered = true
+        }
 
-        val filter = IntentFilter(FloatingOverlayService.ACTION_CONFIGURATION_LIST_CHANGED)
-        ContextCompat.registerReceiver(
-            this,
-            configurationListChangedReceiver,
-            filter,
-            ContextCompat.RECEIVER_NOT_EXPORTED
-        )
-        configurationListReceiverRegistered = true
+        if (!overlayServiceStoppedReceiverRegistered) {
+            val overlayStoppedFilter =
+                IntentFilter(FloatingOverlayService.ACTION_OVERLAY_SERVICE_STOPPED)
+            ContextCompat.registerReceiver(
+                this,
+                overlayServiceStoppedReceiver,
+                overlayStoppedFilter,
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+            overlayServiceStoppedReceiverRegistered = true
+        }
     }
 
     override fun onStop() {
         if (configurationListReceiverRegistered) {
             unregisterReceiver(configurationListChangedReceiver)
             configurationListReceiverRegistered = false
+        }
+        if (overlayServiceStoppedReceiverRegistered) {
+            unregisterReceiver(overlayServiceStoppedReceiver)
+            overlayServiceStoppedReceiverRegistered = false
         }
         super.onStop()
     }

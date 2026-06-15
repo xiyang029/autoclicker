@@ -14,6 +14,7 @@ private const val TARGET_X_KEY = "targetX"
 private const val TARGET_Y_KEY = "targetY"
 private const val CONTROL_X_KEY = "controlX"
 private const val CONTROL_Y_KEY = "controlY"
+private const val OVERLAY_SERVICE_RUNNING_KEY = "overlayServiceRunning"
 const val CONFIGURATION_LIST_KEY = "configurationList"
 const val OVERLAY_PREFERENCES_NAME = "floating_overlay"
 
@@ -169,4 +170,12 @@ fun SharedPreferences.readPosition(defaultX: Int, defaultY: Int): OverlayPositio
         x = getInt(CONTROL_X_KEY, defaultX),
         y = getInt(CONTROL_Y_KEY, defaultY),
     )
+}
+
+fun SharedPreferences.readOverlayServiceRunning(): Boolean {
+    return getBoolean(OVERLAY_SERVICE_RUNNING_KEY, false)
+}
+
+fun SharedPreferences.setOverlayServiceRunning(running: Boolean) {
+    edit().putBoolean(OVERLAY_SERVICE_RUNNING_KEY, running).apply()
 }

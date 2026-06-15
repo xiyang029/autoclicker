@@ -38,6 +38,9 @@ class AutoClickerApp extends StatelessWidget {
             'targetRing': Color(0xFFFF9FBA),
           },
         ),
+        primaryToastTheme: const ShadToastTheme(
+          showCloseIconOnlyWhenHovered: false,
+        ),
       ),
       appBuilder: (context) {
         final materialTheme = Theme.of(context);

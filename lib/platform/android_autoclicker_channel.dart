@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 
 class AndroidOverlayDefaults {
@@ -36,11 +38,28 @@ class AndroidAutoClickerChannel {
   AndroidAutoClickerChannel._();
 
   static const _channel = MethodChannel('autoclicker/android');
+  static FutureOr<void> Function()? _onConfigurationListChanged;
+  static VoidCallback? _onOverlayServiceStopped;
 
-  static void setConfigurationListChangedHandler(VoidCallback? handler) {
+  static void setEventHandlers({
+    VoidCallback? onConfigurationListChanged,
+    VoidCallback? onOverlayServiceStopped,
+  }) {
+    _onConfigurationListChanged = onConfigurationListChanged;
+    _onOverlayServiceStopped = onOverlayServiceStopped;
+    if (_onConfigurationListChanged == null &&
+        _onOverlayServiceStopped == null) {
+      _channel.setMethodCallHandler(null);
+      return;
+    }
     _channel.setMethodCallHandler((call) async {
-      if (call.method == 'configurationListChanged') {
-        handler?.call();
+      switch (call.method) {
+        case 'configurationListChanged':
+          await _onConfigurationListChanged?.call();
+          break;
+        case 'overlayServiceStopped':
+          _onOverlayServiceStopped?.call();
+          break;
       }
     });
   }
@@ -134,6 +153,10 @@ class AndroidAutoClickerChannel {
 
   static Future<void> stopOverlayService() {
     return _invokeVoid('stopOverlayService');
+  }
+
+  static Future<bool> isOverlayServiceRunning() {
+    return _invokeBool('isOverlayServiceRunning');
   }
 
   static Future<String> getAppVersionName() async {
