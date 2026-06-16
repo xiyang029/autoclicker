@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
-import '../../update/pages/update_page.dart';
+import '../../setting/pages/setting_page.dart';
 import '../controllers/auto_clicker_controller.dart';
 import 'configurations_page.dart';
 import 'control_page.dart';
@@ -14,14 +14,19 @@ class AutoClickerHomePage extends StatefulWidget {
 }
 
 class _AutoClickerHomePageState extends State<AutoClickerHomePage> {
+  final GlobalKey<UpdatePageState> _updatePageKey =
+      GlobalKey<UpdatePageState>();
   late final AutoClickerController _controller;
   int _selectedIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    _controller = AutoClickerController()..init();
+    _controller = AutoClickerController();
     _controller.addListener(_onControllerChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _bootstrap();
+    });
   }
 
   @override
@@ -29,6 +34,13 @@ class _AutoClickerHomePageState extends State<AutoClickerHomePage> {
     _controller.removeListener(_onControllerChanged);
     _controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _bootstrap() async {
+    await _controller.init();
+    if (!mounted) return;
+
+    _updatePageKey.currentState?.checkForUpdates(silentWhenUpToDate: true);
   }
 
   void _onControllerChanged() {
@@ -42,7 +54,7 @@ class _AutoClickerHomePageState extends State<AutoClickerHomePage> {
     final pages = [
       ControlPage(controller: _controller),
       ConfigurationsPage(controller: _controller),
-      UpdatePage(controller: _controller),
+      UpdatePage(key: _updatePageKey, controller: _controller),
     ];
 
     return Scaffold(
@@ -50,16 +62,11 @@ class _AutoClickerHomePageState extends State<AutoClickerHomePage> {
         child: IndexedStack(index: _selectedIndex, children: pages),
       ),
       bottomNavigationBar: Container(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
         decoration: BoxDecoration(color: theme.colorScheme.background),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(22),
           child: NavigationBar(
-            height: 64,
+            height: 52,
             selectedIndex: _selectedIndex,
-            backgroundColor: theme.colorScheme.secondary.withValues(
-              alpha: 0.14,
-            ),
             indicatorColor: theme.colorScheme.secondary,
             labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
             onDestinationSelected: (index) {
@@ -77,8 +84,8 @@ class _AutoClickerHomePageState extends State<AutoClickerHomePage> {
                 label: '配置',
               ),
               NavigationDestination(
-                icon: Icon(LucideIcons.download),
-                label: '更新',
+                icon: Icon(LucideIcons.settings2),
+                label: '设置',
               ),
             ],
           ),

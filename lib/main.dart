@@ -16,8 +16,9 @@ void main() {
 
 @pragma('vm:entry-point')
 void downloadCallback(String id, int status, int progress) {
-  IsolateNameServer.lookupPortByName('autoclicker_downloader_port')
-      ?.send([id, status, progress]);
+  IsolateNameServer.lookupPortByName(
+    'autoclicker_downloader_port',
+  )?.send([id, status, progress]);
 }
 
 Future<void> _bootstrap() async {

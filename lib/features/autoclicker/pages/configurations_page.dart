@@ -4,7 +4,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../../platform/android_autoclicker_channel.dart';
 import '../controllers/auto_clicker_controller.dart';
 import '../models/click_configuration.dart';
-import 'autoclicker_page_components.dart';
+import '../widgets/autoclicker_components.dart';
 
 class ConfigurationsPage extends StatelessWidget {
   const ConfigurationsPage({super.key, required this.controller});
@@ -17,46 +17,36 @@ class ConfigurationsPage extends StatelessWidget {
 
     return ListView(
       padding: autoclickerPagePadding,
-      children: [
-        ShadCard(
-          padding: const EdgeInsets.all(16),
-          title: const Text('配置管理'),
-          child: Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: configurations.isEmpty
-                ? Text(
-                    '暂无配置，先保存一套参数。',
-                    style: ShadTheme.of(context).textTheme.muted,
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      for (final entry in configurations.asMap().entries) ...[
-                        _ConfigurationListItem(
-                          configuration: entry.value,
-                          active: controller.isActiveConfiguration(entry.value),
-                          canEdit: controller.canStartOverlay,
-                          onRename: (name) =>
-                              controller.renameConfiguration(entry.value, name),
-                          onApply: () =>
-                              controller.applyConfiguration(entry.value),
-                          onBeforeEdit: controller.stopOverlayService,
-                          onEdit: (updatedConfiguration) =>
-                              controller.editConfiguration(
-                                entry.value,
-                                updatedConfiguration,
-                              ),
-                          onDelete: () =>
-                              controller.deleteConfiguration(entry.value),
-                        ),
-                        if (entry.key != configurations.length - 1)
-                          const SizedBox(height: 12),
-                      ],
-                    ],
-                  ),
-          ),
-        ),
-      ],
+      children: configurations.isEmpty
+          ? [
+              ShadCard(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text('还没有配置', style: ShadTheme.of(context).textTheme.h4),
+                  ],
+                ),
+              ),
+            ]
+          : [
+              for (final entry in configurations.asMap().entries) ...[
+                _ConfigurationListItem(
+                  configuration: entry.value,
+                  active: controller.isActiveConfiguration(entry.value),
+                  canEdit: controller.canStartOverlay,
+                  onRename: (name) =>
+                      controller.renameConfiguration(entry.value, name),
+                  onApply: () => controller.applyConfiguration(entry.value),
+                  onBeforeEdit: controller.stopOverlayService,
+                  onEdit: (updatedConfiguration) => controller
+                      .editConfiguration(entry.value, updatedConfiguration),
+                  onDelete: () => controller.deleteConfiguration(entry.value),
+                ),
+                if (entry.key != configurations.length - 1)
+                  const SizedBox(height: 12),
+              ],
+            ],
     );
   }
 }
@@ -116,17 +106,10 @@ class _ConfigurationListItemState extends State<_ConfigurationListItem> {
 
     return ShadCard(
       padding: const EdgeInsets.all(14),
-      // backgroundColor: widget.active
-      //     ? theme.colorScheme.secondary.withValues(alpha: 0.32)
-      //     : null,
       border: ShadBorder.all(
         color: widget.active
-            ? theme
-                  .colorScheme
-                  .primary // 激活时颜色
-            : theme
-                  .colorScheme
-                  .border, // 使用 theme.colorScheme.border 替换 outline
+            ? theme.colorScheme.primary
+            : theme.colorScheme.border,
         width: widget.active ? 2.0 : 1.0,
       ),
       child: Column(
@@ -143,7 +126,7 @@ class _ConfigurationListItemState extends State<_ConfigurationListItem> {
           ),
           const SizedBox(height: 12),
           Text(
-            '${configuration.clicksPerSecond.round()} 次/秒 · ${configuration.jitterRadius.round()} px · 准星 ${configuration.targetSize.round()} px',
+            '频率 ${configuration.clicksPerSecond.round()} 次/秒 · 偏移 ${configuration.jitterRadius.round()} px · 准星 ${configuration.targetSize.round()} px',
             style: theme.textTheme.muted,
           ),
           const SizedBox(height: 14),
@@ -288,87 +271,83 @@ class _ConfigurationEditorPageState extends State<_ConfigurationEditorPage> {
             padding: autoclickerPagePadding,
             child: ShadCard(
               padding: const EdgeInsets.all(16),
-              title: const Text('编辑配置'),
-              child: Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    TextField(
-                      controller: _nameController,
-                      decoration: autoclickerInputDecoration(
-                        context,
-                        labelText: '配置名称',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextField(
+                    controller: _nameController,
+                    decoration: autoclickerInputDecoration(
+                      context,
+                      labelText: '配置名称',
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  AutoclickerSliderSetting(
+                    title: '点击频率',
+                    valueText: '${_clicksPerSecond.round()} 次/秒',
+                    value: _clicksPerSecond,
+                    min: 1,
+                    max: 20,
+                    onChanged: (value) {
+                      setState(() {
+                        _clicksPerSecond = value;
+                      });
+                    },
+                    onChangeEnd: (_) {
+                      _syncEditableTarget();
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  AutoclickerSliderSetting(
+                    title: '默认偏移范围',
+                    valueText: '${_jitterRadius.round()} px',
+                    value: _jitterRadius,
+                    min: 0,
+                    max: 24,
+                    onChanged: (value) {
+                      setState(() {
+                        _jitterRadius = value;
+                      });
+                    },
+                    onChangeEnd: (_) {
+                      _syncEditableTarget();
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  AutoclickerSliderSetting(
+                    title: '准星大小',
+                    valueText: '${_targetSize.round()} px',
+                    value: _targetSize,
+                    min: 32,
+                    max: 64,
+                    onChanged: (value) {
+                      setState(() {
+                        _targetSize = value;
+                      });
+                    },
+                    onChangeEnd: (_) {
+                      _syncEditableTarget();
+                    },
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ShadButton.outline(
+                          onPressed: _cancel,
+                          child: const Text('取消'),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 14),
-                    AutoclickerSliderSetting(
-                      title: '点击频率',
-                      valueText: '${_clicksPerSecond.round()} 次/秒',
-                      value: _clicksPerSecond,
-                      min: 1,
-                      max: 20,
-                      onChanged: (value) {
-                        setState(() {
-                          _clicksPerSecond = value;
-                        });
-                      },
-                      onChangeEnd: (_) {
-                        _syncEditableTarget();
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    AutoclickerSliderSetting(
-                      title: '默认偏移范围',
-                      valueText: '${_jitterRadius.round()} px',
-                      value: _jitterRadius,
-                      min: 0,
-                      max: 24,
-                      onChanged: (value) {
-                        setState(() {
-                          _jitterRadius = value;
-                        });
-                      },
-                      onChangeEnd: (_) {
-                        _syncEditableTarget();
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    AutoclickerSliderSetting(
-                      title: '准星大小',
-                      valueText: '${_targetSize.round()} px',
-                      value: _targetSize,
-                      min: 32,
-                      max: 64,
-                      onChanged: (value) {
-                        setState(() {
-                          _targetSize = value;
-                        });
-                      },
-                      onChangeEnd: (_) {
-                        _syncEditableTarget();
-                      },
-                    ),
-                    const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ShadButton.outline(
-                            onPressed: _cancel,
-                            child: const Text('取消'),
-                          ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ShadButton(
+                          onPressed: _save,
+                          child: const Text('保存'),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: ShadButton(
-                            onPressed: _save,
-                            child: const Text('保存'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ),

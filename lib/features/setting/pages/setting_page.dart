@@ -17,10 +17,10 @@ class UpdatePage extends StatefulWidget {
   final AutoClickerController controller;
 
   @override
-  State<UpdatePage> createState() => _UpdatePageState();
+  State<UpdatePage> createState() => UpdatePageState();
 }
 
-class _UpdatePageState extends State<UpdatePage> with WidgetsBindingObserver {
+class UpdatePageState extends State<UpdatePage> with WidgetsBindingObserver {
   final AppUpdateService _updateService = AppUpdateService();
   final ReceivePort _downloadPort = ReceivePort();
 
@@ -29,6 +29,7 @@ class _UpdatePageState extends State<UpdatePage> with WidgetsBindingObserver {
   bool _waitingInstallPermission = false;
   String? _pendingInstallApkPath;
   AppDownloadTask? _activeDownloadTask;
+  bool _autoCheckedOnStart = false;
 
   @override
   void initState() {
@@ -59,69 +60,45 @@ class _UpdatePageState extends State<UpdatePage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final theme = ShadTheme.of(context);
     final currentVersion = widget.controller.currentVersion.isEmpty
         ? '--'
         : widget.controller.currentVersion;
+    final canCheckUpdate =
+        !_checkingUpdate && !_downloading && !_waitingInstallPermission;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
         ShadCard(
-          title: Text('版本更新', style: theme.textTheme.h4),
-          child: Padding(
-            padding: const EdgeInsets.only(top: 18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  child: Row(
-                    children: [
-                      Icon(
-                        LucideIcons.download,
-                        color: theme.colorScheme.primary,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '当前版本 $currentVersion',
-                              style: theme.textTheme.small,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                ShadButton.outline(
-                  enabled:
-                      !_checkingUpdate &&
-                      !_downloading &&
-                      !_waitingInstallPermission,
-                  leading: const Icon(LucideIcons.download),
-                  onPressed: _checkForUpdates,
-                  child: Text(
-                    _checkingUpdate
-                        ? '检查中...'
-                        : _waitingInstallPermission
-                        ? '等待授权'
-                        : '检查更新',
-                  ),
-                ),
-              ],
-            ),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              _ProfileActionRow(
+                label: '当前版本: $currentVersion',
+                icon: LucideIcons.info,
+                onPressed: null,
+              ),
+              const Divider(height: 1),
+              _ProfileActionRow(
+                label: _checkingUpdate
+                    ? '检测中...'
+                    : _waitingInstallPermission
+                    ? '等待授权'
+                    : '检测更新',
+                icon: LucideIcons.refreshCw,
+                onPressed: canCheckUpdate ? checkForUpdates : null,
+              ),
+            ],
           ),
         ),
       ],
     );
   }
 
-  Future<void> _checkForUpdates() async {
+  Future<void> checkForUpdates({bool silentWhenUpToDate = false}) async {
+    if (silentWhenUpToDate && _autoCheckedOnStart) return;
+    _autoCheckedOnStart = _autoCheckedOnStart || silentWhenUpToDate;
+
     if (_checkingUpdate || _downloading) return;
 
     _setStateIfMounted(() {
@@ -138,7 +115,9 @@ class _UpdatePageState extends State<UpdatePage> with WidgetsBindingObserver {
       if (!mounted) return;
 
       if (!hasUpdate) {
-        _showMessage('当前已是最新版本');
+        if (!silentWhenUpToDate) {
+          _showMessage('当前已是最新版本');
+        }
         return;
       }
 
@@ -259,7 +238,7 @@ class _UpdatePageState extends State<UpdatePage> with WidgetsBindingObserver {
           title: const Text('发现新版本'),
           description: Text(
             '当前版本 ${currentVersion.isEmpty ? '未知' : currentVersion}，'
-            '最新版本 ${release.version}.',
+            '最新版本 ${release.version}',
           ),
           actions: [
             ShadButton.outline(
@@ -317,5 +296,51 @@ class _UpdatePageState extends State<UpdatePage> with WidgetsBindingObserver {
       });
       _showMessage('下载失败');
     }
+  }
+}
+
+class _ProfileActionRow extends StatelessWidget {
+  const _ProfileActionRow({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = ShadTheme.of(context);
+    final enabled = onPressed != null;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onPressed,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 13),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              color: enabled
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.mutedForeground,
+              size: 20,
+            ),
+            const SizedBox(width: 18),
+            Expanded(
+              child: Text(label, style: enabled ? null : theme.textTheme.muted),
+            ),
+            if (enabled)
+              Icon(
+                LucideIcons.chevronRight,
+                color: theme.colorScheme.mutedForeground,
+                size: 20,
+              ),
+          ],
+        ),
+      ),
+    );
   }
 }

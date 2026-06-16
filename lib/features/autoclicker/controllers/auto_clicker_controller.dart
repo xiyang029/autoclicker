@@ -55,16 +55,18 @@ class AutoClickerController extends ChangeNotifier with WidgetsBindingObserver {
     return configuration.id == activeConfigurationId;
   }
 
-  void init() {
+  Future<void> init() async {
     WidgetsBinding.instance.addObserver(this);
     AndroidAutoClickerChannel.setEventHandlers(
       onConfigurationListChanged: loadConfigurationList,
       onOverlayServiceStopped: _handleOverlayServiceStopped,
     );
-    loadAppVersionName();
-    loadSavedConfiguration();
-    loadConfigurationList();
-    refreshPermissions();
+    await Future.wait([
+      loadAppVersionName(),
+      loadSavedConfiguration(),
+      loadConfigurationList(),
+      refreshPermissions(),
+    ]);
   }
 
   @override

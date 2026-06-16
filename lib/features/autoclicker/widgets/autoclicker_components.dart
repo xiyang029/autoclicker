@@ -106,14 +106,14 @@ InputDecoration autoclickerInputDecoration(
     hintText: hintText,
     isDense: true,
     filled: true,
-    fillColor: theme.colorScheme.secondary.withValues(alpha: 0.16),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+    fillColor: theme.colorScheme.secondary.withValues(alpha: 0.12),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
     border: InputBorder.none,
     enabledBorder: InputBorder.none,
     focusedBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(14),
       borderSide: BorderSide(
-        color: theme.colorScheme.primary.withValues(alpha: 0.4),
+        color: theme.colorScheme.primary.withValues(alpha: 0.45),
         width: 1,
       ),
     ),

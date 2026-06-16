@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../controllers/auto_clicker_controller.dart';
-import 'autoclicker_page_components.dart';
+import '../widgets/autoclicker_components.dart';
 
 class ControlPage extends StatelessWidget {
   const ControlPage({super.key, required this.controller});
@@ -12,7 +12,6 @@ class ControlPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = ShadTheme.of(context);
-
     return ListView(
       padding: autoclickerPagePadding,
       children: [
