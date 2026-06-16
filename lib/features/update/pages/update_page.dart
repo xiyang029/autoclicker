@@ -1,14 +1,15 @@
 import 'dart:async';
-import 'dart:io';
+import 'dart:isolate';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../../core/platform/app_installer_platform_service.dart';
 import '../../../core/services/app_update_service.dart';
 import '../../autoclicker/controllers/auto_clicker_controller.dart';
-import '../../autoclicker/widgets/panel_styles.dart';
 
 class UpdatePage extends StatefulWidget {
   const UpdatePage({super.key, required this.controller});
@@ -21,28 +22,31 @@ class UpdatePage extends StatefulWidget {
 
 class _UpdatePageState extends State<UpdatePage> with WidgetsBindingObserver {
   final AppUpdateService _updateService = AppUpdateService();
+  final ReceivePort _downloadPort = ReceivePort();
 
   bool _checkingUpdate = false;
-  String? _pendingInstallApkPath;
+  bool _downloading = false;
   bool _waitingInstallPermission = false;
-  final ValueNotifier<_UpdateDialogState> _updateDialogState = ValueNotifier(
-    const _UpdateDialogState(title: '准备检查更新', message: '正在初始化...'),
-  );
-  bool _updateDialogVisible = false;
+  String? _pendingInstallApkPath;
+  AppDownloadTask? _activeDownloadTask;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    IsolateNameServer.removePortNameMapping('autoclicker_downloader_port');
+    IsolateNameServer.registerPortWithName(
+      _downloadPort.sendPort,
+      'autoclicker_downloader_port',
+    );
+    _downloadPort.listen(_handleDownloadUpdate);
   }
 
   @override
   void dispose() {
-    if (_updateDialogVisible) {
-      Navigator.of(context, rootNavigator: true).pop();
-    }
+    IsolateNameServer.removePortNameMapping('autoclicker_downloader_port');
+    _downloadPort.close();
     WidgetsBinding.instance.removeObserver(this);
-    _updateDialogState.dispose();
     super.dispose();
   }
 
@@ -72,7 +76,6 @@ class _UpdatePageState extends State<UpdatePage> with WidgetsBindingObserver {
               children: [
                 Container(
                   padding: const EdgeInsets.all(14),
-                  decoration: mutedPanelDecoration(theme),
                   child: Row(
                     children: [
                       Icon(
@@ -96,7 +99,10 @@ class _UpdatePageState extends State<UpdatePage> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 14),
                 ShadButton.outline(
-                  enabled: !_checkingUpdate && !_waitingInstallPermission,
+                  enabled:
+                      !_checkingUpdate &&
+                      !_downloading &&
+                      !_waitingInstallPermission,
                   leading: const Icon(LucideIcons.download),
                   onPressed: _checkForUpdates,
                   child: Text(
@@ -116,7 +122,7 @@ class _UpdatePageState extends State<UpdatePage> with WidgetsBindingObserver {
   }
 
   Future<void> _checkForUpdates() async {
-    if (_checkingUpdate) return;
+    if (_checkingUpdate || _downloading) return;
 
     _setStateIfMounted(() {
       _checkingUpdate = true;
@@ -137,7 +143,7 @@ class _UpdatePageState extends State<UpdatePage> with WidgetsBindingObserver {
       }
 
       final shouldDownload = await _confirmDownload(release);
-      if (!mounted || !shouldDownload) {
+      if (!mounted || shouldDownload != true) {
         return;
       }
 
@@ -153,37 +159,37 @@ class _UpdatePageState extends State<UpdatePage> with WidgetsBindingObserver {
   }
 
   Future<void> _downloadAndInstallRelease(AppReleaseInfo release) async {
-    _showUpdateProgressDialog(
-      title: '正在下载更新',
-      message: '准备下载 ${release.version}...',
-    );
+    final hasNotificationPermission =
+        await AppInstallerPlatformService.hasNotificationPermission();
+    if (!mounted) return;
+
+    if (!hasNotificationPermission) {
+      final granted =
+          await AppInstallerPlatformService.ensureNotificationPermission();
+      if (!mounted) return;
+
+      if (!granted) {
+        _showMessage('需要允许通知权限，才能显示后台下载通知');
+        return;
+      }
+    }
+
+    _setStateIfMounted(() => _downloading = true);
 
     try {
-      final file = await _downloadRelease(release);
-      await _openDownloadedApk(file.path);
+      final task = await _updateService.downloadReleaseApk(release);
+      if (!mounted) return;
+
+      _activeDownloadTask = task;
+      _showMessage('已开始后台下载，请在系统通知中查看');
     } catch (_) {
       if (!mounted) return;
-      _dismissUpdateDialog();
-      unawaited(AppInstallerPlatformService.showToast('下载失败'));
+      _setStateIfMounted(() {
+        _downloading = false;
+        _activeDownloadTask = null;
+      });
+      _showMessage('下载失败');
     }
-  }
-
-  Future<File> _downloadRelease(AppReleaseInfo release) {
-    return _updateService.downloadReleaseApk(
-      release,
-      onProgress: (receivedBytes, totalBytes) {
-        final progress = (receivedBytes / totalBytes * 100)
-            .clamp(0, 100)
-            .round();
-        _updateDialogState.value = _UpdateDialogState(
-          title: '正在下载更新',
-          message:
-              '${_formatBytes(receivedBytes)} / ${_formatBytes(totalBytes)}',
-          progress: progress / 100,
-          progressText: '$progress%',
-        );
-      },
-    );
   }
 
   Future<void> _resumePendingInstallIfPossible() async {
@@ -214,11 +220,10 @@ class _UpdatePageState extends State<UpdatePage> with WidgetsBindingObserver {
         _pendingInstallApkPath = apkPath;
         _waitingInstallPermission = true;
       });
+
       await AppInstallerPlatformService.openInstallPermissionSettings();
       return;
     }
-
-    _showUpdateProgressDialog(title: '正在打开安装器', message: '正在打开系统安装器...');
 
     final result = await OpenFilex.open(
       apkPath,
@@ -227,7 +232,6 @@ class _UpdatePageState extends State<UpdatePage> with WidgetsBindingObserver {
     if (!mounted) return;
 
     if (result.type == ResultType.done) {
-      _dismissUpdateDialog();
       return;
     }
 
@@ -238,14 +242,11 @@ class _UpdatePageState extends State<UpdatePage> with WidgetsBindingObserver {
       ResultType.error => '打开安装包失败',
       ResultType.done => '',
     };
-    _dismissUpdateDialog();
     _showMessage(message);
   }
 
   Future<bool> _confirmDownload(AppReleaseInfo release) async {
     final currentVersion = widget.controller.currentVersion;
-    final deviceAbi = await AppInstallerPlatformService.getDeviceAbi();
-    final asset = release.assetForAbi(deviceAbi);
     if (!mounted) return false;
 
     final shouldDownload = await showShadDialog<bool>(
@@ -258,8 +259,7 @@ class _UpdatePageState extends State<UpdatePage> with WidgetsBindingObserver {
           title: const Text('发现新版本'),
           description: Text(
             '当前版本 ${currentVersion.isEmpty ? '未知' : currentVersion}，'
-            '最新版本 ${release.version}，'
-            '将下载 ${asset?.abiLabel ?? '默认'} 版本。',
+            '最新版本 ${release.version}.',
           ),
           actions: [
             ShadButton.outline(
@@ -279,7 +279,7 @@ class _UpdatePageState extends State<UpdatePage> with WidgetsBindingObserver {
   }
 
   void _showMessage(String message) {
-    ShadToaster.of(context).show(ShadToast(description: Text(message)));
+    unawaited(AppInstallerPlatformService.showToast(message));
   }
 
   void _setStateIfMounted(VoidCallback fn) {
@@ -287,88 +287,35 @@ class _UpdatePageState extends State<UpdatePage> with WidgetsBindingObserver {
     setState(fn);
   }
 
-  void _showUpdateProgressDialog({
-    required String title,
-    required String message,
-    double? progress,
-  }) {
-    _updateDialogState.value = _UpdateDialogState(
-      title: title,
-      message: message,
-      progress: progress,
-    );
-    if (_updateDialogVisible || !mounted) return;
+  void _handleDownloadUpdate(dynamic data) {
+    if (data is! List || data.length < 2) return;
 
-    _updateDialogVisible = true;
-    unawaited(
-      showShadDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (dialogContext) {
-          return ValueListenableBuilder<_UpdateDialogState>(
-            valueListenable: _updateDialogState,
-            builder: (context, state, child) {
-              return ShadDialog.alert(
-                radius: const BorderRadius.all(Radius.circular(12)),
-                constraints: const BoxConstraints(minWidth: 320, maxWidth: 420),
-                removeBorderRadiusWhenTiny: false,
-                useSafeArea: false,
-                title: Text(state.title),
-                description: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(state.message),
-                    if (state.progress != null) ...[
-                      const SizedBox(height: 12),
-                      LinearProgressIndicator(value: state.progress),
-                      const SizedBox(height: 8),
-                      Text(state.progressText ?? ''),
-                    ],
-                  ],
-                ),
-                actions: const [],
-              );
-            },
-          );
-        },
-      ).whenComplete(() {
-        _updateDialogVisible = false;
-      }),
-    );
+    final task = _activeDownloadTask;
+    if (task == null || data[0] != task.taskId) return;
+
+    final status = DownloadTaskStatus.fromInt(data[1] as int);
+    if (status == DownloadTaskStatus.complete) {
+      _setStateIfMounted(() {
+        _downloading = false;
+        _activeDownloadTask = null;
+      });
+      _showMessage('下载完成，准备安装');
+      final apkPath = task.filePath;
+      if (apkPath.isNotEmpty) {
+        unawaited(_openDownloadedApk(apkPath));
+      } else {
+        _showMessage('下载完成，但未找到安装包路径');
+      }
+      return;
+    }
+
+    if (status == DownloadTaskStatus.failed ||
+        status == DownloadTaskStatus.canceled) {
+      _setStateIfMounted(() {
+        _downloading = false;
+        _activeDownloadTask = null;
+      });
+      _showMessage('下载失败');
+    }
   }
-
-  void _dismissUpdateDialog() {
-    if (!_updateDialogVisible || !mounted) return;
-    _updateDialogVisible = false;
-    Navigator.of(context, rootNavigator: true).pop();
-  }
-}
-
-class _UpdateDialogState {
-  const _UpdateDialogState({
-    required this.title,
-    required this.message,
-    this.progress,
-    this.progressText,
-  });
-
-  final String title;
-  final String message;
-  final double? progress;
-  final String? progressText;
-}
-
-String _formatBytes(int bytes) {
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  double value = bytes.toDouble();
-  var unitIndex = 0;
-
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex++;
-  }
-
-  final fractionDigits = value >= 10 || unitIndex == 0 ? 0 : 1;
-  return '${value.toStringAsFixed(fractionDigits)} ${units[unitIndex]}';
 }

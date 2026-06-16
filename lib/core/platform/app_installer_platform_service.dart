@@ -3,6 +3,17 @@ import 'package:flutter/services.dart';
 class AppInstallerPlatformService {
   static const MethodChannel _channel = MethodChannel('autoclicker/installer');
 
+  static Future<bool> hasNotificationPermission() async {
+    try {
+      final allowed = await _channel.invokeMethod<bool>(
+        'hasNotificationPermission',
+      );
+      return allowed ?? true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<bool> canRequestPackageInstalls() async {
     try {
       final allowed = await _channel.invokeMethod<bool>(
@@ -18,11 +29,14 @@ class AppInstallerPlatformService {
     return _channel.invokeMethod<void>('openInstallPermissionSettings');
   }
 
-  static Future<String> getDeviceAbi() async {
+  static Future<bool> ensureNotificationPermission() async {
     try {
-      return await _channel.invokeMethod<String>('getDeviceAbi') ?? '';
+      final allowed = await _channel.invokeMethod<bool>(
+        'ensureNotificationPermission',
+      );
+      return allowed ?? true;
     } catch (_) {
-      return '';
+      return false;
     }
   }
 

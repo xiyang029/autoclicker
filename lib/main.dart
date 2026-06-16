@@ -1,14 +1,28 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import 'features/autoclicker/pages/auto_clicker_home_page.dart';
 
 const _bilibiliPink = Color(0xFFFB7299);
-const _bilibiliPinkSoft = Color(0xFFFFECF2);
-const _bilibiliPinkMuted = Color(0xFFFFF5F8);
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  _bootstrap();
+}
+
+@pragma('vm:entry-point')
+void downloadCallback(String id, int status, int progress) {
+  IsolateNameServer.lookupPortByName('autoclicker_downloader_port')
+      ?.send([id, status, progress]);
+}
+
+Future<void> _bootstrap() async {
+  await FlutterDownloader.initialize(debug: false);
+  FlutterDownloader.registerCallback(downloadCallback);
   runApp(const AutoClickerApp());
 }
 
@@ -24,11 +38,8 @@ class AutoClickerApp extends StatelessWidget {
         colorScheme: const ShadRoseColorScheme.light(
           primary: _bilibiliPink,
           primaryForeground: Colors.white,
-          secondary: _bilibiliPinkSoft,
           secondaryForeground: Color(0xFF3F1D2B),
-          muted: _bilibiliPinkMuted,
           mutedForeground: Color(0xFF7B6470),
-          accent: _bilibiliPinkSoft,
           accentForeground: Color(0xFF3F1D2B),
           input: Color(0xFFFFD6E2),
           ring: _bilibiliPink,
@@ -37,9 +48,6 @@ class AutoClickerApp extends StatelessWidget {
             'bilibiliPink': _bilibiliPink,
             'targetRing': Color(0xFFFF9FBA),
           },
-        ),
-        primaryToastTheme: const ShadToastTheme(
-          showCloseIconOnlyWhenHovered: false,
         ),
       ),
       appBuilder: (context) {

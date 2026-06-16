@@ -1,13 +1,17 @@
 package com.example.autoclicker
 
+import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast
+import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -17,11 +21,13 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private companion object {
         const val INSTALLER_CHANNEL_NAME = "autoclicker/installer"
+        const val NOTIFICATION_PERMISSION_REQUEST_CODE = 7201
     }
 
     private val channelName = "autoclicker/android"
     private val preferencesName = OVERLAY_PREFERENCES_NAME
     private var channel: MethodChannel? = null
+    private var notificationPermissionResult: MethodChannel.Result? = null
     private var configurationListReceiverRegistered = false
     private var overlayServiceStoppedReceiverRegistered = false
     private val configurationListChangedReceiver = object : BroadcastReceiver() {
@@ -41,6 +47,10 @@ class MainActivity : FlutterActivity() {
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName).also {
             it.setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "hasNotificationPermission" -> {
+                        result.success(hasNotificationPermission())
+                    }
+
                     "isOverlayPermissionGranted" -> {
                         result.success(canDrawOverlays())
                     }
@@ -128,23 +138,36 @@ class MainActivity : FlutterActivity() {
                     result.success(canRequestPackageInstalls())
                 }
 
-                    "openInstallPermissionSettings" -> {
-                        openInstallPermissionSettings()
-                        result.success(null)
-                    }
+                "openInstallPermissionSettings" -> {
+                    openInstallPermissionSettings()
+                    result.success(null)
+                }
 
-                    "getDeviceAbi" -> {
-                        result.success(getDeviceAbi())
-                    }
+                "showToast" -> {
+                    showToast(call.argument<String>("message") ?: "")
+                    result.success(null)
+                }
 
-                    "showToast" -> {
-                        showToast(call.argument<String>("message") ?: "")
-                        result.success(null)
-                    }
+                "ensureNotificationPermission" -> {
+                    ensureNotificationPermission(result)
+                }
 
                 else -> result.notImplemented()
             }
         }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != NOTIFICATION_PERMISSION_REQUEST_CODE) return
+
+        val allowed = grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED
+        notificationPermissionResult?.success(allowed)
+        notificationPermissionResult = null
     }
 
     override fun onStart() {
@@ -253,6 +276,15 @@ class MainActivity : FlutterActivity() {
         return packageManager.canRequestPackageInstalls()
     }
 
+    private fun hasNotificationPermission(): Boolean {
+        val permissionGranted =
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        return permissionGranted && NotificationManagerCompat.from(this).areNotificationsEnabled()
+    }
+
     private fun openInstallPermissionSettings() {
         val intent = Intent(
             Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
@@ -263,12 +295,40 @@ class MainActivity : FlutterActivity() {
         startActivity(intent)
     }
 
-    private fun showToast(message: String) {
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    private fun ensureNotificationPermission(result: MethodChannel.Result) {
+        val permissionGranted =
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        val notificationsEnabled = NotificationManagerCompat.from(this).areNotificationsEnabled()
+
+        if (permissionGranted && notificationsEnabled) {
+            result.success(true)
+            return
+        }
+
+        if (permissionGranted && !notificationsEnabled) {
+            openNotificationSettings()
+            result.success(false)
+            return
+        }
+
+        if (notificationPermissionResult != null) {
+            result.success(false)
+            return
+        }
+
+        notificationPermissionResult = result
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+            NOTIFICATION_PERMISSION_REQUEST_CODE
+        )
     }
 
-    private fun getDeviceAbi(): String {
-        return android.os.Build.SUPPORTED_ABIS.firstOrNull().orEmpty()
+    private fun showToast(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
     private fun isAccessibilityServiceEnabled(): Boolean {
@@ -284,6 +344,14 @@ class MainActivity : FlutterActivity() {
         return enabledServices.split(':').any {
             it.equals(expectedServiceName, ignoreCase = true)
         }
+    }
+
+    private fun openNotificationSettings() {
+        val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+            putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        startActivity(intent)
     }
 
     private fun MethodCall.readOverlayConfig(): OverlayConfig {

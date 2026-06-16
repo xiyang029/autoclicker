@@ -13,6 +13,7 @@ class AutoClickerController extends ChangeNotifier with WidgetsBindingObserver {
   bool overlayServiceRunning = false;
   bool overlayPermissionGranted = false;
   bool accessibilityPermissionGranted = false;
+  String? selectedConfigurationId;
 
   // 只保留一个核心数据：供 UI 渲染展示的当前版本号
   String currentVersion = '';
@@ -27,14 +28,31 @@ class AutoClickerController extends ChangeNotifier with WidgetsBindingObserver {
   bool get canStartOverlay =>
       overlayPermissionGranted && accessibilityPermissionGranted;
 
+  String? get activeConfigurationId {
+    if (selectedConfigurationId != null) {
+      for (final configuration in configurations) {
+        if (configuration.id == selectedConfigurationId) {
+          return selectedConfigurationId;
+        }
+      }
+    }
+
+    for (final configuration in configurations) {
+      if (configuration.matches(
+        clicksPerSecond: clicksPerSecond,
+        jitterRadius: jitterRadius,
+        targetSize: targetSize,
+        targetX: targetX,
+        targetY: targetY,
+      )) {
+        return configuration.id;
+      }
+    }
+    return null;
+  }
+
   bool isActiveConfiguration(ClickConfiguration configuration) {
-    return configuration.matches(
-      clicksPerSecond: clicksPerSecond,
-      jitterRadius: jitterRadius,
-      targetSize: targetSize,
-      targetX: targetX,
-      targetY: targetY,
-    );
+    return configuration.id == activeConfigurationId;
   }
 
   void init() {
@@ -60,7 +78,6 @@ class AutoClickerController extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      refreshOverlayRunningState();
       refreshPermissions();
       loadSavedConfiguration();
       loadConfigurationList();
@@ -152,6 +169,8 @@ class AutoClickerController extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> applyConfiguration(ClickConfiguration configuration) async {
     _updateFromConfiguration(configuration);
+    selectedConfigurationId = configuration.id;
+    notifyListeners();
     await saveOverlayConfiguration();
   }
 
@@ -187,6 +206,9 @@ class AutoClickerController extends ChangeNotifier with WidgetsBindingObserver {
       for (final item in configurations)
         if (item.id != configuration.id) item,
     ];
+    if (selectedConfigurationId == configuration.id) {
+      selectedConfigurationId = null;
+    }
     notifyListeners();
     await _saveConfigurationList();
   }
@@ -268,6 +290,27 @@ class AutoClickerController extends ChangeNotifier with WidgetsBindingObserver {
     this.targetSize = targetSize ?? this.targetSize;
     this.targetX = targetX ?? this.targetX;
     this.targetY = targetY ?? this.targetY;
+
+    if (selectedConfigurationId != null) {
+      ClickConfiguration? selectedConfiguration;
+      for (final configuration in configurations) {
+        if (configuration.id == selectedConfigurationId) {
+          selectedConfiguration = configuration;
+          break;
+        }
+      }
+      if (selectedConfiguration == null ||
+          !selectedConfiguration.matches(
+            clicksPerSecond: this.clicksPerSecond,
+            jitterRadius: this.jitterRadius,
+            targetSize: this.targetSize,
+            targetX: this.targetX,
+            targetY: this.targetY,
+          )) {
+        selectedConfigurationId = null;
+      }
+    }
+
     if (notify) {
       notifyListeners();
     }

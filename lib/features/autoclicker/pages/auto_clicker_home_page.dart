@@ -49,34 +49,40 @@ class _AutoClickerHomePageState extends State<AutoClickerHomePage> {
       body: SafeArea(
         child: IndexedStack(index: _selectedIndex, children: pages),
       ),
-      bottomNavigationBar: NavigationBar(
-        height: 52,
-        selectedIndex: _selectedIndex,
-        backgroundColor: theme.colorScheme.background,
-        indicatorColor: theme.colorScheme.secondary,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        onDestinationSelected: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(LucideIcons.mousePointerClick),
-            selectedIcon: Icon(LucideIcons.mousePointerClick),
-            label: '控制',
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        decoration: BoxDecoration(color: theme.colorScheme.background),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(22),
+          child: NavigationBar(
+            height: 64,
+            selectedIndex: _selectedIndex,
+            backgroundColor: theme.colorScheme.secondary.withValues(
+              alpha: 0.14,
+            ),
+            indicatorColor: theme.colorScheme.secondary,
+            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+            onDestinationSelected: (index) {
+              setState(() {
+                _selectedIndex = index;
+              });
+            },
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(LucideIcons.mousePointerClick),
+                label: '控制',
+              ),
+              NavigationDestination(
+                icon: Icon(LucideIcons.listChecks),
+                label: '配置',
+              ),
+              NavigationDestination(
+                icon: Icon(LucideIcons.download),
+                label: '更新',
+              ),
+            ],
           ),
-          NavigationDestination(
-            icon: Icon(LucideIcons.listChecks),
-            selectedIcon: Icon(LucideIcons.listChecks),
-            label: '配置',
-          ),
-          NavigationDestination(
-            icon: Icon(LucideIcons.download),
-            selectedIcon: Icon(LucideIcons.download),
-            label: '更新',
-          ),
-        ],
+        ),
       ),
     );
   }

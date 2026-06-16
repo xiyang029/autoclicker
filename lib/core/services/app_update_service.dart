@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
-import '../platform/app_installer_platform_service.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter_downloader/flutter_downloader.dart';
 
 class AppReleaseInfo {
   const AppReleaseInfo({required this.version, required this.assets});
@@ -26,19 +27,21 @@ class AppReleaseInfo {
 }
 
 class AppReleaseAsset {
-  const AppReleaseAsset({
-    required this.name,
-    required this.downloadUrl,
-    required this.expectedSize,
-  });
+  const AppReleaseAsset({required this.name, required this.downloadUrl});
 
   final String name;
   final String downloadUrl;
-  final int expectedSize;
 
   String get cacheKey => _normalizeCacheKey(name);
 
   String get abiLabel => _inferAbiLabel(name);
+}
+
+class AppDownloadTask {
+  const AppDownloadTask({required this.taskId, required this.filePath});
+
+  final String taskId;
+  final String filePath;
 }
 
 class AppUpdateService {
@@ -46,6 +49,18 @@ class AppUpdateService {
     : _httpClient = httpClient ?? HttpClient();
 
   final HttpClient _httpClient;
+
+  Future<String> getDeviceAbi() async {
+    if (!Platform.isAndroid) return '';
+
+    try {
+      final androidInfo = await DeviceInfoPlugin().androidInfo;
+      if (androidInfo.supportedAbis.isEmpty) return '';
+      return androidInfo.supportedAbis.first;
+    } catch (_) {
+      return '';
+    }
+  }
 
   /// 获取最新 Release 信息
   Future<AppReleaseInfo> fetchLatestRelease() async {
@@ -68,7 +83,6 @@ class AppUpdateService {
           (asset) => AppReleaseAsset(
             name: asset['name'] as String,
             downloadUrl: asset['browser_download_url'] as String,
-            expectedSize: (asset['size'] as num).toInt(),
           ),
         )
         .toList(growable: false);
@@ -80,12 +94,9 @@ class AppUpdateService {
     return AppReleaseInfo(version: data['tag_name'] as String, assets: assets);
   }
 
-  /// 按当前设备 ABI 下载对应 APK
-  Future<File> downloadReleaseApk(
-    AppReleaseInfo release, {
-    void Function(int received, int total)? onProgress,
-  }) async {
-    final deviceAbi = await AppInstallerPlatformService.getDeviceAbi();
+  /// 按当前设备 ABI 启动对应 APK 的下载任务
+  Future<AppDownloadTask> downloadReleaseApk(AppReleaseInfo release) async {
+    final deviceAbi = await getDeviceAbi();
     final asset = release.assetForAbi(deviceAbi) ?? _fallbackAsset(release);
 
     if (asset == null) {
@@ -94,56 +105,35 @@ class AppUpdateService {
       );
     }
 
+    final cacheDir = Directory.systemTemp;
+    if (!await cacheDir.exists()) {
+      await cacheDir.create(recursive: true);
+    }
+
     final cacheFile = File(
-      '${Directory.systemTemp.path}${Platform.pathSeparator}${asset.cacheKey}',
+      '${cacheDir.path}${Platform.pathSeparator}${asset.cacheKey}',
+    );
+    if (await cacheFile.exists()) {
+      await cacheFile.delete();
+    }
+
+    final taskId = await FlutterDownloader.enqueue(
+      url: asset.downloadUrl,
+      headers: const {'User-Agent': 'autoclicker-app-updater'},
+      savedDir: cacheDir.path,
+      fileName: asset.cacheKey,
+      showNotification: true,
+      openFileFromNotification: false,
     );
 
-    if (await cacheFile.exists() &&
-        await cacheFile.length() == asset.expectedSize) {
-      onProgress?.call(asset.expectedSize, asset.expectedSize);
-      return cacheFile;
+    if (taskId == null) {
+      throw const FileSystemException('Failed to enqueue download task');
     }
 
-    final downloadUri = Uri.parse(asset.downloadUrl);
-    final request = await _httpClient.getUrl(downloadUri)
-      ..followRedirects = true;
-    request.headers.set(HttpHeaders.userAgentHeader, 'autoclicker-app-updater');
-
-    final response = await request.close();
-    if (response.statusCode >= 400) {
-      throw HttpException(
-        'Download failed: ${response.statusCode}',
-        uri: downloadUri,
-      );
-    }
-
-    var receivedBytes = 0;
-    final sink = cacheFile.openWrite();
-
-    try {
-      await sink.addStream(
-        response.map((chunk) {
-          receivedBytes += chunk.length;
-          onProgress?.call(receivedBytes, asset.expectedSize);
-          return chunk;
-        }),
-      );
-      await sink.close();
-    } catch (_) {
-      await sink.close().catchError((_) {});
-      if (await cacheFile.exists()) await cacheFile.delete();
-      rethrow;
-    }
-
-    if (receivedBytes != asset.expectedSize) {
-      if (await cacheFile.exists()) await cacheFile.delete();
-      throw FileSystemException(
-        'Size mismatch: expected ${asset.expectedSize}, got $receivedBytes',
-        cacheFile.path,
-      );
-    }
-
-    return cacheFile;
+    return AppDownloadTask(
+      taskId: taskId,
+      filePath: '${cacheDir.path}${Platform.pathSeparator}${asset.cacheKey}',
+    );
   }
 
   /// 简单的语义化版本号对比 (支持 v1.2.3 或 1.2.3)
