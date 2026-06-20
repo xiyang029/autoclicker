@@ -10,15 +10,13 @@ class AppReleaseInfo {
   final String version;
   final List<AppReleaseAsset> assets;
 
+  /// 根据设备 ABI 匹配最合适的安装包资源。
   AppReleaseAsset? assetForAbi(String abi) {
-    final normalizedAbi = _normalizeAbi(abi);
-    final preferredNames = _preferredAssetNames(normalizedAbi);
+    final preferredNames = _preferredAssetNames(_normalizeAbi(abi));
 
     for (final preferredName in preferredNames) {
       for (final asset in assets) {
-        if (asset.name == preferredName) {
-          return asset;
-        }
+        if (asset.name == preferredName) return asset;
       }
     }
 
@@ -32,8 +30,10 @@ class AppReleaseAsset {
   final String name;
   final String downloadUrl;
 
+  /// 生成用于本地缓存的安全文件名。
   String get cacheKey => _normalizeCacheKey(name);
 
+  /// 推断资源对应的 ABI 标签，用于调试和扩展。
   String get abiLabel => _inferAbiLabel(name);
 }
 
@@ -50,6 +50,7 @@ class AppUpdateService {
 
   final HttpClient _httpClient;
 
+  /// 获取当前 Android 设备首选 ABI。
   Future<String> getDeviceAbi() async {
     if (!Platform.isAndroid) return '';
 
@@ -62,7 +63,7 @@ class AppUpdateService {
     }
   }
 
-  /// 获取最新 Release 信息
+  /// 获取最新 Release 信息。
   Future<AppReleaseInfo> fetchLatestRelease() async {
     final uri = Uri.parse(
       'https://api.github.com/repos/xiyang029/autoclicker/releases/latest',
@@ -94,7 +95,7 @@ class AppUpdateService {
     return AppReleaseInfo(version: data['tag_name'] as String, assets: assets);
   }
 
-  /// 按当前设备 ABI 启动对应 APK 的下载任务
+  /// 按当前设备 ABI 启动对应 APK 的下载任务。
   Future<AppDownloadTask> downloadReleaseApk(AppReleaseInfo release) async {
     final deviceAbi = await getDeviceAbi();
     final asset = release.assetForAbi(deviceAbi) ?? _fallbackAsset(release);
@@ -136,23 +137,31 @@ class AppUpdateService {
     );
   }
 
-  /// 简单的语义化版本号对比 (支持 v1.2.3 或 1.2.3)
+  /// 对比版本号，判断最新版本是否高于当前版本。
   bool isNewerVersion(String latest, String current) {
-    List<int> parse(String v) => RegExp(
+    List<int> parse(String versionText) => RegExp(
       r'\d+',
-    ).allMatches(v).map((m) => int.parse(m.group(0)!)).toList();
-    final lParts = parse(latest), cParts = parse(current);
+    ).allMatches(versionText).map((m) => int.parse(m.group(0)!)).toList();
+    final latestParts = parse(latest);
+    final currentParts = parse(current);
 
-    for (var i = 0; i < lParts.length || i < cParts.length; i++) {
-      final l = i < lParts.length ? lParts[i] : 0;
-      final c = i < cParts.length ? cParts[i] : 0;
-      if (l > c) return true;
-      if (l < c) return false;
+    for (
+      var index = 0;
+      index < latestParts.length || index < currentParts.length;
+      index++
+    ) {
+      final latestValue = index < latestParts.length ? latestParts[index] : 0;
+      final currentValue = index < currentParts.length
+          ? currentParts[index]
+          : 0;
+      if (latestValue > currentValue) return true;
+      if (latestValue < currentValue) return false;
     }
     return false;
   }
 }
 
+/// 当无法精确命中 ABI 时按优先级回退 APK 资源。
 AppReleaseAsset? _fallbackAsset(AppReleaseInfo release) {
   const fallbackOrder = ['arm64-v8a', 'armeabi-v7a', 'x86_64'];
 
@@ -167,6 +176,7 @@ AppReleaseAsset? _fallbackAsset(AppReleaseInfo release) {
   );
 }
 
+/// 归一化 ABI 文本，统一匹配规则。
 String _normalizeAbi(String abi) {
   final normalized = abi.trim().toLowerCase();
   if (normalized.contains('arm64') || normalized.contains('aarch64')) {
@@ -178,28 +188,23 @@ String _normalizeAbi(String abi) {
   if (normalized.contains('x86_64') || normalized.contains('amd64')) {
     return 'x86_64';
   }
-  if (normalized.contains('x86')) {
-    return 'x86';
-  }
-  return normalized;
+  return '';
 }
 
+/// 生成 ABI 对应的候选文件名列表。
 List<String> _preferredAssetNames(String abi) {
-  final normalized = _normalizeAbi(abi);
-  final candidates = <String>[
-    'app-release-$normalized.apk',
-    'app-$normalized-release.apk',
-    'autoclicker-$normalized.apk',
-    '$normalized.apk',
+  if (abi.isEmpty) return const [];
+
+  return [
+    'app-release-$abi.apk',
+    'app-$abi-release.apk',
+    'autoclicker-$abi.apk',
+    '$abi.apk',
+    if (abi == 'arm64-v8a') ...['app-arm64-v8a-release.apk', 'app-arm64.apk'],
   ];
-
-  if (normalized == 'arm64-v8a') {
-    candidates.addAll(['app-arm64-v8a-release.apk', 'app-arm64.apk']);
-  }
-
-  return candidates;
 }
 
+/// 根据文件名推断 ABI 标签。
 String _inferAbiLabel(String name) {
   final lower = name.toLowerCase();
   if (lower.contains('arm64-v8a') || lower.contains('arm64')) {
@@ -211,13 +216,11 @@ String _inferAbiLabel(String name) {
   if (lower.contains('x86_64')) {
     return 'x86_64';
   }
-  if (lower.contains('x86')) {
-    return 'x86';
-  }
   return 'universal';
 }
 
+/// 规整缓存文件名，避免系统路径非法字符。
 String _normalizeCacheKey(String name) {
-  final safe = name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]+'), '_');
-  return safe.toLowerCase();
+  final safeFileName = name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]+'), '_');
+  return safeFileName.toLowerCase();
 }

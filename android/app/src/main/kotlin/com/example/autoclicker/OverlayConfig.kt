@@ -3,7 +3,6 @@ package com.example.autoclicker
 import android.content.Intent
 import android.content.SharedPreferences
 import io.flutter.plugin.common.MethodCall
-import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.roundToInt
 
@@ -19,12 +18,18 @@ const val CONFIGURATION_LIST_KEY = "configurationList"
 const val OVERLAY_PREFERENCES_NAME = "floating_overlay"
 
 data class OverlayConfig(
+    // 标识当前悬浮点击使用的点击频率。
     val clicksPerSecond: Double = DEFAULT_CLICKS_PER_SECOND,
+    // 标识当前悬浮点击使用的固定偏移。
     val jitterRadius: Double = DEFAULT_JITTER_RADIUS,
+    // 标识当前准星显示尺寸。
     val targetSize: Double = DEFAULT_TARGET_SIZE,
+    // 标识当前准星横向坐标。
     val targetX: Int = DEFAULT_TARGET_X,
+    // 标识当前准星纵向坐标。
     val targetY: Int = DEFAULT_TARGET_Y,
 ) {
+    // 标识将当前原生配置转换为 Flutter 侧统一消费的配置结构。
     fun toPreferenceMap(): Map<String, Double> {
         return mapOf(
             CLICKS_PER_SECOND_KEY to clicksPerSecond,
@@ -35,6 +40,7 @@ data class OverlayConfig(
         )
     }
 
+    // 标识将当前配置转换为配置列表持久化所需的 JSON 结构。
     fun toJson(id: String, name: String): JSONObject {
         return JSONObject().apply {
             put("id", id)
@@ -45,6 +51,15 @@ data class OverlayConfig(
             put(TARGET_X_KEY, targetX)
             put(TARGET_Y_KEY, targetY)
         }
+    }
+
+    // 标识将当前配置写入悬浮服务启动参数，减少调用侧重复字段拼装。
+    fun putExtras(intent: Intent) {
+        intent.putExtra(CLICKS_PER_SECOND_KEY, clicksPerSecond)
+        intent.putExtra(JITTER_RADIUS_KEY, jitterRadius)
+        intent.putExtra(TARGET_SIZE_KEY, targetSize)
+        intent.putExtra(TARGET_X_KEY, targetX.toDouble())
+        intent.putExtra(TARGET_Y_KEY, targetY.toDouble())
     }
 
     fun saveToPreferences(
@@ -65,12 +80,22 @@ data class OverlayConfig(
     }
 
     companion object {
+        // 标识当前原生层在未收到 Flutter 配置时的最小默认点击频率。
         const val DEFAULT_CLICKS_PER_SECOND = 8.0
-        const val DEFAULT_JITTER_RADIUS = 6.0
-        const val DEFAULT_TARGET_SIZE = 32.0
+
+        // 标识当前原生层在未收到 Flutter 配置时的最小默认点击偏移。
+        const val DEFAULT_JITTER_RADIUS = 4.0
+
+        // 标识当前原生层在未收到 Flutter 配置时的最小默认准星尺寸。
+        const val DEFAULT_TARGET_SIZE = 64.0
+
+        // 标识当前原生层在未收到 Flutter 配置时的最小默认准星横坐标。
         const val DEFAULT_TARGET_X = 180
+
+        // 标识当前原生层在未收到 Flutter 配置时的最小默认准星纵坐标。
         const val DEFAULT_TARGET_Y = 300
 
+        // 标识从本地偏好恢复原生悬浮配置。
         fun fromPreferences(preferences: SharedPreferences): OverlayConfig {
             return OverlayConfig(
                 clicksPerSecond = preferences.readDouble(
@@ -87,6 +112,7 @@ data class OverlayConfig(
             )
         }
 
+        // 标识从 Flutter 通道参数恢复原生悬浮配置。
         fun fromMethodCall(call: MethodCall): OverlayConfig {
             return OverlayConfig(
                 clicksPerSecond =
@@ -101,6 +127,7 @@ data class OverlayConfig(
             )
         }
 
+        // 标识合并 Intent 参数与本地持久化结果，恢复服务启动配置。
         fun fromIntent(intent: Intent?, preferences: SharedPreferences): OverlayConfig {
             val saved = fromPreferences(preferences)
             return OverlayConfig(
@@ -121,34 +148,6 @@ data class OverlayConfig(
             )
         }
 
-        fun fromJson(json: JSONObject): OverlayConfig {
-            return OverlayConfig(
-                clicksPerSecond =
-                    json.optDouble(CLICKS_PER_SECOND_KEY, DEFAULT_CLICKS_PER_SECOND),
-                jitterRadius = json.optDouble(JITTER_RADIUS_KEY, DEFAULT_JITTER_RADIUS),
-                targetSize = json.optDouble(TARGET_SIZE_KEY, DEFAULT_TARGET_SIZE),
-                targetX = json.optInt(TARGET_X_KEY, DEFAULT_TARGET_X),
-                targetY = json.optInt(TARGET_Y_KEY, DEFAULT_TARGET_Y),
-            )
-        }
-
-        fun listFromPreferences(preferences: SharedPreferences, key: String): List<JSONObject> {
-            val saved = preferences.getString(key, null).orEmpty()
-            if (saved.isBlank()) {
-                return emptyList()
-            }
-
-            val array = JSONArray(saved)
-            return List(array.length(), array::getJSONObject)
-        }
-
-        fun saveListToPreferences(
-            preferences: SharedPreferences,
-            key: String,
-            items: List<JSONObject>,
-        ) {
-            preferences.edit().putString(key, JSONArray(items).toString()).apply()
-        }
     }
 }
 
@@ -156,13 +155,6 @@ data class OverlayPosition(val x: Int, val y: Int)
 
 fun SharedPreferences.readDouble(key: String, fallback: Double): Double {
     return getFloat(key, fallback.toFloat()).toDouble()
-}
-
-fun SharedPreferences.readPosition(): OverlayPosition {
-    return OverlayPosition(
-        x = getInt(CONTROL_X_KEY, 0),
-        y = getInt(CONTROL_Y_KEY, 0),
-    )
 }
 
 fun SharedPreferences.readPosition(defaultX: Int, defaultY: Int): OverlayPosition {

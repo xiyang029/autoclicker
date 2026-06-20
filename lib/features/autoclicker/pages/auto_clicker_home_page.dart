@@ -62,33 +62,35 @@ class _AutoClickerHomePageState extends State<AutoClickerHomePage> {
         child: IndexedStack(index: _selectedIndex, children: pages),
       ),
       bottomNavigationBar: Container(
-        decoration: BoxDecoration(color: theme.colorScheme.background),
-        child: ClipRRect(
-          child: NavigationBar(
-            height: 52,
-            selectedIndex: _selectedIndex,
-            indicatorColor: theme.colorScheme.secondary,
-            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-            onDestinationSelected: (index) {
-              setState(() {
-                _selectedIndex = index;
-              });
-            },
-            destinations: const [
-              NavigationDestination(
-                icon: Icon(LucideIcons.mousePointerClick),
-                label: '控制',
-              ),
-              NavigationDestination(
-                icon: Icon(LucideIcons.listChecks),
-                label: '配置',
-              ),
-              NavigationDestination(
-                icon: Icon(LucideIcons.settings2),
-                label: '设置',
-              ),
-            ],
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(
+              color: theme.colorScheme.border.withValues(alpha: 0.8),
+            ),
           ),
+        ),
+        child: NavigationBar(
+          height: 48,
+          selectedIndex: _selectedIndex,
+          onDestinationSelected: (index) {
+            setState(() {
+              _selectedIndex = index;
+            });
+          },
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(LucideIcons.mousePointerClick),
+              label: '控制',
+            ),
+            NavigationDestination(
+              icon: Icon(LucideIcons.listChecks),
+              label: '配置',
+            ),
+            NavigationDestination(
+              icon: Icon(LucideIcons.settings2),
+              label: '设置',
+            ),
+          ],
         ),
       ),
     );

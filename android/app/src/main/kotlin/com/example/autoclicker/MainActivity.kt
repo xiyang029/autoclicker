@@ -107,14 +107,14 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
 
-                    "loadConfigurationList" -> {
-                        result.success(loadConfigurationList())
+                    "loadConfigurationListPayload" -> {
+                        result.success(preferences().getString(CONFIGURATION_LIST_KEY, null).orEmpty())
                     }
 
-                    "saveConfigurationList" -> {
-                        val configurations =
-                            call.argument<List<Map<String, Any?>>>("configurations") ?: emptyList()
-                        saveConfigurationList(configurations)
+                    "saveConfigurationListPayload" -> {
+                        preferences().edit()
+                            .putString(CONFIGURATION_LIST_KEY, call.argument<String>("payload").orEmpty())
+                            .apply()
                         result.success(null)
                     }
 
@@ -182,7 +182,6 @@ class MainActivity : FlutterActivity() {
             )
             configurationListReceiverRegistered = true
         }
-
         if (!overlayServiceStoppedReceiverRegistered) {
             val overlayStoppedFilter =
                 IntentFilter(FloatingOverlayService.ACTION_OVERLAY_SERVICE_STOPPED)
@@ -208,34 +207,6 @@ class MainActivity : FlutterActivity() {
         super.onStop()
     }
 
-    private fun loadConfigurationList(): List<Map<String, Any>> {
-        return OverlayConfig.listFromPreferences(preferences(), CONFIGURATION_LIST_KEY).map { item ->
-            val overlayConfig = OverlayConfig.fromJson(item)
-            mapOf(
-                "id" to item.optString("id"),
-                "name" to item.optString("name"),
-                "clicksPerSecond" to overlayConfig.clicksPerSecond,
-                "jitterRadius" to overlayConfig.jitterRadius,
-                "targetSize" to overlayConfig.targetSize,
-                "targetX" to overlayConfig.targetX.toDouble(),
-                "targetY" to overlayConfig.targetY.toDouble(),
-            )
-        }
-    }
-
-    private fun saveConfigurationList(configurations: List<Map<String, Any?>>) {
-        OverlayConfig.saveListToPreferences(
-            preferences(),
-            CONFIGURATION_LIST_KEY,
-            configurations.map { item ->
-                item.toOverlayConfig().toJson(
-                    id = item["id"] as? String ?: "",
-                    name = item["name"] as? String ?: "",
-                )
-            },
-        )
-    }
-
     private fun preferences() = getSharedPreferences(preferencesName, Context.MODE_PRIVATE)
 
     private fun loadOverlayConfiguration(): Map<String, Double> {
@@ -252,11 +223,7 @@ class MainActivity : FlutterActivity() {
         targetOnly: Boolean = false
     ) = Intent(this, FloatingOverlayService::class.java).apply {
         this.action = action
-        putExtra("clicksPerSecond", overlayConfig.clicksPerSecond)
-        putExtra("jitterRadius", overlayConfig.jitterRadius)
-        putExtra("targetSize", overlayConfig.targetSize)
-        putExtra("targetX", overlayConfig.targetX.toDouble())
-        putExtra("targetY", overlayConfig.targetY.toDouble())
+        overlayConfig.putExtras(this)
         putExtra("targetOnly", targetOnly)
     }
 
@@ -360,23 +327,5 @@ class MainActivity : FlutterActivity() {
 
     private fun MethodCall.isTargetOnly(): Boolean {
         return argument<Boolean>("targetOnly") ?: false
-    }
-
-    private fun Map<String, Any?>.toOverlayConfig(): OverlayConfig {
-        return OverlayConfig(
-            clicksPerSecond =
-                (this["clicksPerSecond"] as? Number)?.toDouble()
-                    ?: OverlayConfig.DEFAULT_CLICKS_PER_SECOND,
-            jitterRadius =
-                (this["jitterRadius"] as? Number)?.toDouble()
-                    ?: OverlayConfig.DEFAULT_JITTER_RADIUS,
-            targetSize =
-                (this["targetSize"] as? Number)?.toDouble()
-                    ?: OverlayConfig.DEFAULT_TARGET_SIZE,
-            targetX =
-                (this["targetX"] as? Number)?.toDouble()?.toInt() ?: OverlayConfig.DEFAULT_TARGET_X,
-            targetY =
-                (this["targetY"] as? Number)?.toDouble()?.toInt() ?: OverlayConfig.DEFAULT_TARGET_Y,
-        )
     }
 }

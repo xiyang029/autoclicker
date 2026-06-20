@@ -7,13 +7,15 @@ import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
-import '../../../core/platform/app_installer_platform_service.dart';
-import '../../../core/services/app_update_service.dart';
+import '../services/app_installer_platform_service.dart';
+import '../services/app_update_service.dart';
 import '../../autoclicker/controllers/auto_clicker_controller.dart';
+import '../../autoclicker/widgets/autoclicker_components.dart';
 
 class UpdatePage extends StatefulWidget {
   const UpdatePage({super.key, required this.controller});
 
+  /// 标识当前页面共享的自动点击控制器。
   final AutoClickerController controller;
 
   @override
@@ -21,16 +23,26 @@ class UpdatePage extends StatefulWidget {
 }
 
 class UpdatePageState extends State<UpdatePage> with WidgetsBindingObserver {
+  /// 负责拉取远端版本信息与下载任务。
   final AppUpdateService _updateService = AppUpdateService();
+
+  /// 监听后台下载回调，驱动页面状态刷新。
   final ReceivePort _downloadPort = ReceivePort();
 
+  /// 标识当前是否正在检查更新。
   bool _checkingUpdate = false;
-  bool _downloading = false;
-  bool _waitingInstallPermission = false;
-  String? _pendingInstallApkPath;
-  AppDownloadTask? _activeDownloadTask;
-  bool _autoCheckedOnStart = false;
 
+  /// 标识当前是否正在下载安装包。
+  bool _downloading = false;
+
+  /// 标识当前是否等待安装未知来源授权。
+  bool _waitingInstallPermission = false;
+
+  /// 暂存待安装 APK 路径，用于授权返回后继续流程。
+  String? _pendingInstallApkPath;
+
+  /// 标识当前激活的后台下载任务。
+  AppDownloadTask? _activeDownloadTask;
   @override
   void initState() {
     super.initState();
@@ -67,18 +79,25 @@ class UpdatePageState extends State<UpdatePage> with WidgetsBindingObserver {
         !_checkingUpdate && !_downloading && !_waitingInstallPermission;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      padding: autoclickerPagePadding,
       children: [
-        ShadCard(
-          padding: const EdgeInsets.all(16),
+        AutoclickerSection(
           child: Column(
             children: [
               _ProfileActionRow(
-                label: '当前版本: $currentVersion',
+                label: '当前版本',
                 icon: LucideIcons.info,
                 onPressed: null,
+                trailing: Text(
+                  currentVersion,
+                  style: ShadTheme.of(context).textTheme.muted,
+                ),
               ),
-              const Divider(height: 1),
+              Divider(
+                color: ShadTheme.of(context).colorScheme.border,
+                height: 13,
+                thickness: 1,
+              ),
               _ProfileActionRow(
                 label: _checkingUpdate
                     ? '检测中...'
@@ -96,9 +115,6 @@ class UpdatePageState extends State<UpdatePage> with WidgetsBindingObserver {
   }
 
   Future<void> checkForUpdates({bool silentWhenUpToDate = false}) async {
-    if (silentWhenUpToDate && _autoCheckedOnStart) return;
-    _autoCheckedOnStart = _autoCheckedOnStart || silentWhenUpToDate;
-
     if (_checkingUpdate || _downloading) return;
 
     _setStateIfMounted(() {
@@ -304,40 +320,57 @@ class _ProfileActionRow extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.onPressed,
+    this.trailing,
   });
 
+  /// 标识当前行的展示文案。
   final String label;
+
+  /// 标识当前行左侧图标。
   final IconData icon;
+
+  /// 标识当前行被点击后的动作。
   final VoidCallback? onPressed;
+
+  /// 标识当前行右侧补充内容。
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
     final theme = ShadTheme.of(context);
     final enabled = onPressed != null;
+    final trailingWidget =
+        trailing ??
+        (enabled
+            ? Icon(
+                LucideIcons.chevronRight,
+                color: theme.colorScheme.mutedForeground,
+                size: 20,
+              )
+            : null);
+    final trailingChildren = trailingWidget == null
+        ? const <Widget>[]
+        : [trailingWidget];
+
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onPressed,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 13),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          color: enabled
+              ? theme.colorScheme.secondary.withValues(alpha: 0.06)
+              : Colors.transparent,
+        ),
         child: Row(
           children: [
-            Icon(
-              icon,
-              color: enabled
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.mutedForeground,
-              size: 20,
-            ),
+            Icon(icon, color: theme.colorScheme.primary, size: 20),
             const SizedBox(width: 18),
             Expanded(
               child: Text(label, style: enabled ? null : theme.textTheme.muted),
             ),
-            if (enabled)
-              Icon(
-                LucideIcons.chevronRight,
-                color: theme.colorScheme.mutedForeground,
-                size: 20,
-              ),
+            ...trailingChildren,
           ],
         ),
       ),

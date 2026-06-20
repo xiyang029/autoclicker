@@ -3,38 +3,58 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/click_configuration.dart';
-import '../../../platform/android_autoclicker_channel.dart';
+import '../services/android_autoclicker_channel.dart';
+import '../services/click_configuration_storage.dart';
 
 class AutoClickerController extends ChangeNotifier with WidgetsBindingObserver {
   AutoClickerController();
 
+  /// 标识控制器是否已经释放，避免异步回调继续写状态。
   bool _disposed = false;
 
+  /// 标识悬浮点击服务当前是否运行。
   bool overlayServiceRunning = false;
+
+  /// 标识系统悬浮窗权限是否已授权。
   bool overlayPermissionGranted = false;
+
+  /// 标识无障碍权限是否已授权。
   bool accessibilityPermissionGranted = false;
+
+  /// 标识当前手动选中的配置 ID。
   String? selectedConfigurationId;
 
   // 只保留一个核心数据：供 UI 渲染展示的当前版本号
   String currentVersion = '';
 
+  /// 标识当前点击频率参数。
   double clicksPerSecond = AndroidOverlayDefaults.clicksPerSecond;
+
+  /// 标识当前固定点击偏移参数。
   double jitterRadius = AndroidOverlayDefaults.jitterRadius;
+
+  /// 标识当前准星尺寸参数。
   double targetSize = AndroidOverlayDefaults.targetSize;
+
+  /// 标识当前准星横向坐标。
   double targetX = AndroidOverlayDefaults.targetX;
+
+  /// 标识当前准星纵向坐标。
   double targetY = AndroidOverlayDefaults.targetY;
+
+  /// 标识当前已保存的配置列表。
   List<ClickConfiguration> configurations = const [];
 
   bool get canStartOverlay =>
       overlayPermissionGranted && accessibilityPermissionGranted;
 
   String? get activeConfigurationId {
-    if (selectedConfigurationId != null) {
-      for (final configuration in configurations) {
-        if (configuration.id == selectedConfigurationId) {
-          return selectedConfigurationId;
-        }
-      }
+    final selectedConfigurationId = this.selectedConfigurationId;
+    if (selectedConfigurationId != null &&
+        configurations.any((configuration) {
+          return configuration.id == selectedConfigurationId;
+        })) {
+      return selectedConfigurationId;
     }
 
     for (final configuration in configurations) {
@@ -123,13 +143,10 @@ class AutoClickerController extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> loadConfigurationList() async {
     final loadedConfigurations =
-        await AndroidAutoClickerChannel.loadConfigurationList();
+        await ClickConfigurationStorage.loadConfigurations();
 
     if (_disposed) return;
-    configurations = loadedConfigurations
-        .map(ClickConfiguration.fromChannelMap)
-        .where((configuration) => configuration.id.isNotEmpty)
-        .toList();
+    configurations = loadedConfigurations;
     notifyListeners();
   }
 
@@ -146,6 +163,16 @@ class AutoClickerController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> saveOverlayConfiguration() async {
+    /// 标识平台侧最近一次拖动后的准星坐标快照。
+    final latestConfiguration =
+        await AndroidAutoClickerChannel.loadOverlayConfiguration();
+    if (_disposed) return;
+
+    _updateOverlayValues(
+      targetX: latestConfiguration['targetX'],
+      targetY: latestConfiguration['targetY'],
+      notify: false,
+    );
     await AndroidAutoClickerChannel.saveOverlayConfiguration(
       clicksPerSecond: clicksPerSecond,
       jitterRadius: jitterRadius,
@@ -262,11 +289,7 @@ class AutoClickerController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> _saveConfigurationList() {
-    return AndroidAutoClickerChannel.saveConfigurationList(
-      configurations
-          .map((configuration) => configuration.toChannelMap())
-          .toList(),
-    );
+    return ClickConfigurationStorage.saveConfigurations(configurations);
   }
 
   void _updateFromConfiguration(ClickConfiguration configuration) {

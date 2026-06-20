@@ -19,6 +19,7 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Toast
+import org.json.JSONArray
 import kotlin.math.roundToInt
 import kotlin.random.Random
 
@@ -350,28 +351,33 @@ class FloatingOverlayService : Service() {
 
     private fun addConfiguration() {
         val preferences = preferences()
-        val savedConfigurations = OverlayConfig.listFromPreferences(
-            preferences,
-            CONFIGURATION_LIST_KEY,
-        )
+        val savedConfigurations =
+            preferences.getString(CONFIGURATION_LIST_KEY, null)
+                .orEmpty()
+                .takeIf(String::isNotBlank)
+                ?.let { payload ->
+                    val array = JSONArray(payload)
+                    List(array.length(), array::getJSONObject)
+                }
+                ?: emptyList()
         val currentConfig = currentOverlayConfig()
         val nextConfiguration = currentConfig.toJson(
             id = System.nanoTime().toString(),
             name = "配置 ${savedConfigurations.size + 1}",
         )
 
-        OverlayConfig.saveListToPreferences(
-            preferences,
-            CONFIGURATION_LIST_KEY,
-            savedConfigurations + nextConfiguration,
-        )
+        preferences.edit()
+            .putString(
+                CONFIGURATION_LIST_KEY,
+                JSONArray(savedConfigurations + nextConfiguration).toString(),
+            )
+            .apply()
         sendBroadcast(Intent(ACTION_CONFIGURATION_LIST_CHANGED).setPackage(packageName))
     }
 
     private fun saveConfiguration() {
         overlayConfig = currentOverlayConfig()
         overlayConfig.saveToPreferences(preferences(), controlPosition())
-        Toast.makeText(this, "已保存当前参数", Toast.LENGTH_SHORT).show()
     }
 
     private fun removeOverlay() {

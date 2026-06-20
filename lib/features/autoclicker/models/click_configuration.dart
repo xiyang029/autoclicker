@@ -1,4 +1,4 @@
-import '../../../platform/android_autoclicker_channel.dart';
+import '../services/android_autoclicker_channel.dart';
 
 class ClickConfiguration {
   const ClickConfiguration({
@@ -12,6 +12,7 @@ class ClickConfiguration {
   });
 
   factory ClickConfiguration.fromChannelMap(Map<String, Object?> map) {
+    // 统一复用平台默认值合并逻辑，避免模型层重复兜底分支。
     final configuration = AndroidOverlayDefaults.merge(map);
     return ClickConfiguration(
       id: map['id'] as String? ?? '',
@@ -24,12 +25,25 @@ class ClickConfiguration {
     );
   }
 
+  /// 标识配置的唯一主键。
   final String id;
+
+  /// 标识配置的展示名称。
   final String name;
+
+  /// 标识配置使用的点击频率。
   final double clicksPerSecond;
+
+  /// 标识配置使用的点击偏移。
   final double jitterRadius;
+
+  /// 标识配置使用的准星尺寸。
   final double targetSize;
+
+  /// 标识配置使用的准星横向坐标。
   final double targetX;
+
+  /// 标识配置使用的准星纵向坐标。
   final double targetY;
 
   Map<String, Object?> toChannelMap() {
